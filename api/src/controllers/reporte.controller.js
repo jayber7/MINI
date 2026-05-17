@@ -97,8 +97,8 @@ async function obtenerLibroDiario(desde, hasta, proyecto) {
       totalHaber += parseFloat(d.haber) || 0;
       return {
         id: d.id,
-        cuentaCodigo: d.PlanCuenta?.codigo || '',
-        cuentaNombre: d.PlanCuenta?.nombre || '',
+        cuentaCodigo: d.PlanCuentum?.codigo || '',
+        cuentaNombre: d.PlanCuentum?.nombre || '',
         glosa: d.glosa,
         debe: parseFloat(d.debe),
         haber: parseFloat(d.haber),
@@ -132,15 +132,6 @@ async function libroDiario(req, res) {
 }
 
 async function obtenerLibroMayor(desde, hasta, codigoCuenta) {
-  const whereDetalle = {};
-
-  if (codigoCuenta) {
-    const cuenta = await PlanCuenta.findOne({ where: { codigo: codigoCuenta } });
-    if (cuenta) {
-      whereDetalle.planCuentaId = cuenta.id;
-    }
-  }
-
   const whereComprobante = { estado: 'activo' };
 
   if (desde || hasta) {
@@ -149,57 +140,59 @@ async function obtenerLibroMayor(desde, hasta, codigoCuenta) {
     if (hasta) whereComprobante.fecha[Op.lte] = hasta;
   }
 
-  const detalles = await ComprobanteDetalle.findAll({
-    where: whereDetalle,
+  const comprobantes = await Comprobante.findAll({
+    where: whereComprobante,
     include: [
-      { model: PlanCuenta, attributes: ['codigo', 'nombre', 'tipo'] },
       {
-        model: Comprobante,
-        where: whereComprobante,
-        attributes: ['id', 'numero', 'fecha', 'glosa', 'tipoComprobante'],
+        model: ComprobanteDetalle,
+        include: [{ model: PlanCuenta, attributes: ['codigo', 'nombre', 'tipo'] }],
       },
     ],
-    order: [[Comprobante, 'fecha', 'ASC'], [Comprobante, 'numero', 'ASC']],
+    order: [['fecha', 'ASC'], ['numero', 'ASC']],
   });
 
   const cuentasMap = {};
 
-  detalles.forEach((d) => {
-    const codigo = d.PlanCuenta?.codigo;
-    if (!codigo) return;
+  comprobantes.forEach((comp) => {
+    comp.ComprobanteDetalles.forEach((d) => {
+      const codigo = d.PlanCuentum?.codigo;
+      if (!codigo) return;
 
-    if (!cuentasMap[codigo]) {
-      cuentasMap[codigo] = {
-        codigo,
-        nombre: d.PlanCuenta.nombre,
-        tipo: d.PlanCuenta.tipo,
-        movimientos: [],
-        totalDebe: 0,
-        totalHaber: 0,
-        saldo: 0,
-      };
-    }
+      if (codigoCuenta && codigo !== codigoCuenta) return;
 
-    const debe = parseFloat(d.debe) || 0;
-    const haber = parseFloat(d.haber) || 0;
+      if (!cuentasMap[codigo]) {
+        cuentasMap[codigo] = {
+          codigo,
+          nombre: d.PlanCuentum.nombre,
+          tipo: d.PlanCuentum.tipo,
+          movimientos: [],
+          totalDebe: 0,
+          totalHaber: 0,
+          saldo: 0,
+        };
+      }
 
-    cuentasMap[codigo].movimientos.push({
-      fecha: d.Comprobante?.fecha,
-      numero: d.Comprobante?.numero,
-      glosa: d.glosa || d.Comprobante?.glosa,
-      tipoComprobante: d.Comprobante?.tipoComprobante,
-      debe,
-      haber,
+      const debe = parseFloat(d.debe) || 0;
+      const haber = parseFloat(d.haber) || 0;
+
+      cuentasMap[codigo].movimientos.push({
+        fecha: comp.fecha,
+        numero: comp.numero,
+        glosa: d.glosa || comp.glosa,
+        tipoComprobante: comp.tipoComprobante,
+        debe,
+        haber,
+      });
+
+      cuentasMap[codigo].totalDebe += debe;
+      cuentasMap[codigo].totalHaber += haber;
+
+      if (cuentasMap[codigo].tipo === 'Activo' || cuentasMap[codigo].tipo === 'Gasto') {
+        cuentasMap[codigo].saldo += debe - haber;
+      } else {
+        cuentasMap[codigo].saldo += haber - debe;
+      }
     });
-
-    cuentasMap[codigo].totalDebe += debe;
-    cuentasMap[codigo].totalHaber += haber;
-
-    if (cuentasMap[codigo].tipo === 'Activo' || cuentasMap[codigo].tipo === 'Gasto') {
-      cuentasMap[codigo].saldo += debe - haber;
-    } else {
-      cuentasMap[codigo].saldo += haber - debe;
-    }
   });
 
   return Object.values(cuentasMap).sort((a, b) => a.codigo.localeCompare(b.codigo));
