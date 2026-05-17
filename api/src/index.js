@@ -13,6 +13,9 @@ const {
   proyectoRoutes,
   reporteRoutes,
   exportRoutes,
+  retencionRoutes,
+  compraRoutes,
+  ventaRoutes,
 } = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
 const seed = require('./seeds/seed');
@@ -37,10 +40,24 @@ app.use('/api/gestiones', gestionRoutes);
 app.use('/api/proyectos', proyectoRoutes);
 app.use('/api/reportes', reporteRoutes);
 app.use('/api/export', exportRoutes);
+app.use('/api/retenciones', retencionRoutes);
+app.use('/api/compras', compraRoutes);
+app.use('/api/ventas', ventaRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Servir frontend estático en producción
+if (process.env.NODE_ENV === 'production') {
+  const path = require('path');
+  const clientDist = path.join(__dirname, '../../client/dist');
+  app.use(express.static(clientDist));
+
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientDist, 'index.html'));
+  });
+}
 
 app.use(errorHandler);
 

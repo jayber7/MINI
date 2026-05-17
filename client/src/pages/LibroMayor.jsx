@@ -9,16 +9,33 @@ export default function LibroMayor() {
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
   const [codigoCuenta, setCodigoCuenta] = useState('');
+  const [gestionId, setGestionId] = useState('');
+  const [gestiones, setGestiones] = useState([]);
   const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
     api.get('/plan-cuentas').then(({ data }) => setCuentas(data)).catch(() => {});
+    api.get('/gestiones').then(({ data }) => {
+      setGestiones(data);
+      if (data.length > 0 && !gestionId) {
+        setGestionId(data[0].id);
+        setDesde(data[0].fechaInicio);
+        setHasta(data[0].fechaFin);
+      }
+    }).catch(() => {});
   }, []);
+
+  const handleGestionChange = (id) => {
+    setGestionId(id);
+    const g = gestiones.find((x) => x.id === parseInt(id));
+    if (g) { setDesde(g.fechaInicio); setHasta(g.fechaFin); }
+  };
 
   const cargarDatos = async () => {
     setCargando(true);
     try {
       const params = {};
+      if (gestionId) params.gestionId = gestionId;
       if (desde) params.desde = desde;
       if (hasta) params.hasta = hasta;
       if (codigoCuenta) params.codigoCuenta = codigoCuenta;
@@ -33,12 +50,13 @@ export default function LibroMayor() {
   };
 
   useEffect(() => {
-    cargarDatos();
-  }, []);
+    if (gestionId) cargarDatos();
+  }, [gestionId]);
 
   const handleExportPDF = () => {
     setExportando(true);
     const params = new URLSearchParams();
+    if (gestionId) params.append('gestionId', gestionId);
     if (desde) params.append('desde', desde);
     if (hasta) params.append('hasta', hasta);
     if (codigoCuenta) params.append('codigoCuenta', codigoCuenta);
@@ -49,6 +67,7 @@ export default function LibroMayor() {
   const handleExportExcel = () => {
     setExportando(true);
     const params = new URLSearchParams();
+    if (gestionId) params.append('gestionId', gestionId);
     if (desde) params.append('desde', desde);
     if (hasta) params.append('hasta', hasta);
     if (codigoCuenta) params.append('codigoCuenta', codigoCuenta);
@@ -94,40 +113,28 @@ export default function LibroMayor() {
       <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
         <div className="flex items-center gap-4 flex-wrap">
           <div>
+            <label className="block text-xs text-gray-500 mb-1">Gestión</label>
+            <select value={gestionId} onChange={(e) => handleGestionChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[150px]">
+              <option value="">Seleccionar</option>
+              {gestiones.map((g) => (<option key={g.id} value={g.id}>{g.year} - {g.glosa}</option>))}
+            </select>
+          </div>
+          <div>
             <label className="block text-xs text-gray-500 mb-1">Desde</label>
-            <input
-              type="date"
-              value={desde}
-              onChange={(e) => setDesde(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            />
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Hasta</label>
-            <input
-              type="date"
-              value={hasta}
-              onChange={(e) => setHasta(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            />
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
           </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Cuenta</label>
-            <select
-              value={codigoCuenta}
-              onChange={(e) => setCodigoCuenta(e.target.value)}
-              className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[200px]"
-            >
+            <select value={codigoCuenta} onChange={(e) => setCodigoCuenta(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[200px]">
               <option value="">Todas las cuentas</option>
-              {cuentas.map((c) => (
-                <option key={c.id} value={c.codigo}>{c.codigo} - {c.nombre}</option>
-              ))}
+              {cuentas.map((c) => (<option key={c.id} value={c.codigo}>{c.codigo} - {c.nombre}</option>))}
             </select>
           </div>
-          <button
-            onClick={cargarDatos}
-            className="mt-5 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition text-sm"
-          >
+          <button onClick={cargarDatos} className="mt-5 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition text-sm">
             Generar
           </button>
         </div>

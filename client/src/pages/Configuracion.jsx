@@ -13,6 +13,10 @@ export default function Configuracion() {
     firmaPropietario: '',
     tituloRepresentanteLegal: '',
     firmaRepresentanteLegal: '',
+    ivaExento: false,
+    ivaExentoRm: '0',
+    metodoEvaluacion: 'PEPS',
+    generarPdf: false,
   });
   const [cargando, setCargando] = useState(true);
   const [guardando, setGuardando] = useState(false);
@@ -37,6 +41,10 @@ export default function Configuracion() {
           firmaPropietario: data.firmaPropietario || '',
           tituloRepresentanteLegal: data.tituloRepresentanteLegal || '',
           firmaRepresentanteLegal: data.firmaRepresentanteLegal || '',
+          ivaExento: data.ivaExento || false,
+          ivaExentoRm: data.ivaExentoRm || '0',
+          metodoEvaluacion: data.metodoEvaluacion || 'PEPS',
+          generarPdf: data.generarPdf || false,
         });
       }
     } catch (error) {
@@ -185,6 +193,58 @@ export default function Configuracion() {
                 onChange={(e) => setForm({ ...form, firmaRepresentanteLegal: e.target.value })}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
               />
+            </div>
+          </div>
+        </div>
+
+        {/* Configuración Fiscal */}
+        <div>
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Configuración Fiscal</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={form.ivaExento}
+                onChange={(e) => setForm({ ...form, ivaExento: e.target.checked })}
+                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+              />
+              <div>
+                <label className="text-sm font-medium text-gray-700">IVA Exento</label>
+                <p className="text-xs text-gray-500">La empresa está exenta del pago de IVA</p>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nº Resolución IVA Exento</label>
+              <input
+                type="text"
+                value={form.ivaExentoRm}
+                onChange={(e) => setForm({ ...form, ivaExentoRm: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Método de Evaluación de Inventario</label>
+              <select
+                value={form.metodoEvaluacion}
+                onChange={(e) => setForm({ ...form, metodoEvaluacion: e.target.value })}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none"
+              >
+                <option value="PEPS">PEPS (FIFO)</option>
+                <option value="UEPS">UEPS (LIFO)</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={form.generarPdf}
+                onChange={(e) => setForm({ ...form, generarPdf: e.target.checked })}
+                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+              />
+              <div>
+                <label className="text-sm font-medium text-gray-700">Generar PDF automático</label>
+                <p className="text-xs text-gray-500">Generar PDF al contabilizar comprobantes</p>
+              </div>
             </div>
           </div>
         </div>

@@ -52,6 +52,26 @@ const Empresa = sequelize.define('Empresa', {
     type: DataTypes.INTEGER,
     allowNull: true,
   },
+  ivaExento: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  ivaExentoRm: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    defaultValue: '0',
+  },
+  metodoEvaluacion: {
+    type: DataTypes.STRING,
+    allowNull: false,
+    defaultValue: 'PEPS',
+  },
+  generarPdf: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
 }, {
   timestamps: true,
   tableName: 'empresas',

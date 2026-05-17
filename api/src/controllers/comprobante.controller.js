@@ -228,6 +228,30 @@ async function anular(req, res) {
   }
 }
 
+async function contabilizar(req, res) {
+  try {
+    const comprobante = await Comprobante.findByPk(req.params.id);
+
+    if (!comprobante) {
+      return res.status(404).json({ error: 'Comprobante no encontrado' });
+    }
+
+    if (comprobante.estado !== 'activo') {
+      return res.status(400).json({ error: 'Solo se pueden contabilizar comprobantes activos' });
+    }
+
+    await comprobante.update({
+      estado: 'contabilizado',
+      usuarioIdContabiliza: req.usuario.id,
+      fechaContabilizacion: new Date(),
+    });
+
+    res.json({ mensaje: 'Comprobante contabilizado correctamente' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al contabilizar comprobante' });
+  }
+}
+
 async function eliminar(req, res) {
   try {
     const comprobante = await Comprobante.findByPk(req.params.id);
@@ -289,6 +313,7 @@ module.exports = {
   crear,
   actualizar,
   anular,
+  contabilizar,
   eliminar,
   obtenerTotales,
 };

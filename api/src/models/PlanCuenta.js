@@ -25,7 +25,7 @@ const PlanCuenta = sequelize.define('PlanCuenta', {
     },
   },
   tipo: {
-    type: DataTypes.ENUM('Activo', 'Pasivo', 'Patrimonio', 'Ingreso', 'Gasto'),
+    type: DataTypes.ENUM('Activo', 'Pasivo', 'Patrimonio', 'Ingreso', 'Gasto', 'Orden', 'Contingentes'),
     allowNull: false,
   },
   clase: {

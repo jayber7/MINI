@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../services/api';
-import { Plus, Edit2, Trash2, XCircle, Eye, FileText, AlertCircle, CheckCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, XCircle, Eye, FileText, AlertCircle, CheckCircle, Calculator } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
 
@@ -15,6 +15,7 @@ export default function Comprobantes() {
   const [modalConfirm, setModalConfirm] = useState({ isOpen: false, type: '', id: null });
   const [busqueda, setBusqueda] = useState('');
   const [pagina, setPagina] = useState(1);
+  const [calcMenu, setCalcMenu] = useState({ isOpen: false, index: null, x: 0, y: 0 });
   const porPagina = 10;
 
   const [form, setForm] = useState({
@@ -23,6 +24,9 @@ export default function Comprobantes() {
     glosa: '',
     fecha: new Date().toISOString().split('T')[0],
     gestionId: '',
+    cheque: '',
+    usd: '',
+    ufv: '',
     detalles: [{ planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
   });
 
@@ -33,6 +37,14 @@ export default function Comprobantes() {
   useEffect(() => {
     setPagina(1);
   }, [busqueda]);
+
+  useEffect(() => {
+    const cerrarCalc = () => setCalcMenu({ isOpen: false, index: null, x: 0, y: 0 });
+    if (calcMenu.isOpen) {
+      document.addEventListener('click', cerrarCalc);
+      return () => document.removeEventListener('click', cerrarCalc);
+    }
+  }, [calcMenu.isOpen]);
 
   const cargarDatos = async () => {
     try {
@@ -112,6 +124,37 @@ export default function Comprobantes() {
     return { totalDebe, totalHaber, balanceado: Math.abs(totalDebe - totalHaber) < 0.01 };
   };
 
+  const abrirCalcMenu = (e, index) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setCalcMenu({ isOpen: true, index, x: e.clientX, y: e.clientY });
+  };
+
+  const aplicarCalculo = (tipo) => {
+    const idx = calcMenu.index;
+    const valor = parseFloat(form.detalles[idx].debe) || parseFloat(form.detalles[idx].haber) || 0;
+    if (valor === 0) {
+      toast.error('Ingrese un valor en la línea antes de calcular');
+      setCalcMenu({ isOpen: false, index: null, x: 0, y: 0 });
+      return;
+    }
+    let resultado;
+    switch (tipo) {
+      case 'neto87': resultado = Math.round(valor * 0.87 * 100) / 100; break;
+      case 'iva13': resultado = Math.round(valor * 0.13 * 100) / 100; break;
+      case 'it3': resultado = Math.round(valor * 0.03 * 100) / 100; break;
+      case 'rciva8': resultado = Math.round(valor * 0.08 * 100) / 100; break;
+      case 'rciva155': resultado = Math.round(valor * 0.155 * 100) / 100; break;
+      default: resultado = valor;
+    }
+    setForm((prev) => {
+      const nuevos = [...prev.detalles];
+      nuevos[idx] = { ...nuevos[idx], debe: resultado, haber: 0 };
+      return { ...prev, detalles: nuevos };
+    });
+    setCalcMenu({ isOpen: false, index: null, x: 0, y: 0 });
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -157,6 +200,9 @@ export default function Comprobantes() {
         glosa: data.glosa,
         fecha: data.fecha,
         gestionId: data.gestionId,
+        cheque: data.cheque || '',
+        usd: data.usd || '',
+        ufv: data.ufv || '',
         detalles: data.ComprobanteDetalles.map((d) => ({
           planCuentaId: d.planCuentaId,
           glosa: d.glosa || '',
@@ -178,6 +224,26 @@ export default function Comprobantes() {
     setModalConfirm({ isOpen: true, type: 'eliminar', id });
   };
 
+  const handleContabilizar = (id) => {
+    setModalConfirm({ isOpen: true, type: 'contabilizar', id });
+  };
+
+  const handleExportarPdf = async (id) => {
+    try {
+      const res = await api.get(`/export/comprobante/${id}/pdf`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `comprobante_${id}.pdf`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error('Error al exportar PDF');
+    }
+  };
+
   const handleConfirmAction = async () => {
     const { type, id } = modalConfirm;
     try {
@@ -187,10 +253,13 @@ export default function Comprobantes() {
       } else if (type === 'eliminar') {
         await api.delete(`/comprobantes/${id}`);
         toast.success('Comprobante eliminado correctamente');
+      } else if (type === 'contabilizar') {
+        await api.post(`/comprobantes/${id}/contabilizar`);
+        toast.success('Comprobante contabilizado correctamente');
       }
       cargarDatos();
     } catch (error) {
-      toast.error(error.response?.data?.error || `Error al ${type === 'anular' ? 'anular' : 'eliminar'} comprobante`);
+      toast.error(error.response?.data?.error || `Error al ${type === 'anular' ? 'anular' : type === 'contabilizar' ? 'contabilizar' : 'eliminar'} comprobante`);
     }
   };
 
@@ -201,6 +270,9 @@ export default function Comprobantes() {
       glosa: '',
       fecha: new Date().toISOString().split('T')[0],
       gestionId: gestiones[0]?.id || '',
+      cheque: '',
+      usd: '',
+      ufv: '',
       detalles: [{ planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
     });
     setEditando(null);
@@ -283,6 +355,7 @@ export default function Comprobantes() {
           >
             <option value="">Todos los estados</option>
             <option value="activo">Activo</option>
+            <option value="contabilizado">Contabilizado</option>
             <option value="anulado">Anulado</option>
           </select>
           <button
@@ -349,6 +422,40 @@ export default function Comprobantes() {
                 />
               </div>
             </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Nº Cheque</label>
+                <input
+                  type="text"
+                  value={form.cheque}
+                  onChange={(e) => setForm({ ...form, cheque: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="Opcional"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tasa USD</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={form.usd}
+                  onChange={(e) => setForm({ ...form, usd: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="Ej: 6.96"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tasa UFV</label>
+                <input
+                  type="number"
+                  step="0.0001"
+                  value={form.ufv}
+                  onChange={(e) => setForm({ ...form, ufv: e.target.value })}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
+                  placeholder="Ej: 3.2145"
+                />
+              </div>
+            </div>
 
             {/* Detalles */}
             <div>
@@ -411,7 +518,15 @@ export default function Comprobantes() {
                         placeholder="0.00"
                       />
                     </div>
-                    <div className="col-span-1">
+                    <div className="col-span-1 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => abrirCalcMenu(e, index)}
+                        className="p-1.5 text-gray-400 hover:text-indigo-600 transition"
+                        title="Cálculos rápidos"
+                      >
+                        <Calculator className="w-3.5 h-3.5" />
+                      </button>
                       <button
                         type="button"
                         onClick={() => eliminarDetalle(index)}
@@ -457,6 +572,34 @@ export default function Comprobantes() {
                   )}
                 </div>
               </div>
+
+              {/* Menú de cálculos rápidos */}
+              {calcMenu.isOpen && (
+                <div
+                  className="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-52"
+                  style={{ top: calcMenu.y - 10, left: calcMenu.x - 100 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 border-b border-gray-100">
+                    Cálculos Rápidos
+                  </div>
+                  <button type="button" onClick={() => aplicarCalculo('neto87')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
+                    <span>Neto 87%</span><span className="text-gray-400 font-mono">sin IVA</span>
+                  </button>
+                  <button type="button" onClick={() => aplicarCalculo('iva13')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
+                    <span>IVA 13%</span><span className="text-gray-400 font-mono">× 0.13</span>
+                  </button>
+                  <button type="button" onClick={() => aplicarCalculo('it3')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
+                    <span>IT 3%</span><span className="text-gray-400 font-mono">× 0.03</span>
+                  </button>
+                  <button type="button" onClick={() => aplicarCalculo('rciva8')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
+                    <span>RC-IVA 8%</span><span className="text-gray-400 font-mono">× 0.08</span>
+                  </button>
+                  <button type="button" onClick={() => aplicarCalculo('rciva155')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
+                    <span>RC-IVA 15.5%</span><span className="text-gray-400 font-mono">× 0.155</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
@@ -518,37 +661,53 @@ export default function Comprobantes() {
                 <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{c.glosa}</td>
                 <td className="px-4 py-3">
                   <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    c.estado === 'activo' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    c.estado === 'activo' ? 'bg-green-100 text-green-700' :
+                    c.estado === 'contabilizado' ? 'bg-blue-100 text-blue-700' :
+                    'bg-red-100 text-red-700'
                   }`}>
-                    {c.estado === 'activo' ? 'Activo' : 'Anulado'}
+                    {c.estado === 'activo' ? 'Activo' : c.estado === 'contabilizado' ? 'Contabilizado' : 'Anulado'}
                   </span>
                 </td>
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <button
-                      onClick={() => handleEdit(c)}
-                      className="p-1.5 text-gray-500 hover:text-indigo-600 transition"
-                      title="Editar"
+                      onClick={() => handleExportarPdf(c.id)}
+                      className="p-1.5 text-gray-500 hover:text-green-600 transition"
+                      title="Exportar PDF"
                     >
-                      <Edit2 className="w-4 h-4" />
+                      <Eye className="w-4 h-4" />
                     </button>
                     {c.estado === 'activo' && (
-                      <button
-                        onClick={() => handleAnular(c.id)}
-                        className="p-1.5 text-gray-500 hover:text-orange-600 transition"
-                        title="Anular"
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
-                    )}
-                    {c.estado === 'activo' && (
-                      <button
-                        onClick={() => handleDelete(c.id)}
-                        className="p-1.5 text-gray-500 hover:text-red-600 transition"
-                        title="Eliminar"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleEdit(c)}
+                          className="p-1.5 text-gray-500 hover:text-indigo-600 transition"
+                          title="Editar"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleAnular(c.id)}
+                          className="p-1.5 text-gray-500 hover:text-orange-600 transition"
+                          title="Anular"
+                        >
+                          <XCircle className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(c.id)}
+                          className="p-1.5 text-gray-500 hover:text-red-600 transition"
+                          title="Eliminar"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleContabilizar(c.id)}
+                          className="p-1.5 text-gray-500 hover:text-blue-600 transition"
+                          title="Contabilizar"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                        </button>
+                      </>
                     )}
                   </div>
                 </td>
@@ -617,14 +776,28 @@ export default function Comprobantes() {
         isOpen={modalConfirm.isOpen}
         onClose={() => setModalConfirm({ isOpen: false, type: '', id: null })}
         onConfirm={handleConfirmAction}
-        title={modalConfirm.type === 'anular' ? 'Anular Comprobante' : 'Eliminar Comprobante'}
+        title={
+          modalConfirm.type === 'anular' ? 'Anular Comprobante' :
+          modalConfirm.type === 'contabilizar' ? 'Contabilizar Comprobante' :
+          'Eliminar Comprobante'
+        }
         message={
           modalConfirm.type === 'anular'
             ? '¿Está seguro de anular este comprobante? Esta acción no se puede deshacer.'
+            : modalConfirm.type === 'contabilizar'
+            ? '¿Está seguro de contabilizar este comprobante? No podrá ser editado ni eliminado.'
             : '¿Está seguro de eliminar este comprobante?'
         }
-        confirmText={modalConfirm.type === 'anular' ? 'Anular' : 'Eliminar'}
-        variant={modalConfirm.type === 'anular' ? 'warning' : 'danger'}
+        confirmText={
+          modalConfirm.type === 'anular' ? 'Anular' :
+          modalConfirm.type === 'contabilizar' ? 'Contabilizar' :
+          'Eliminar'
+        }
+        variant={
+          modalConfirm.type === 'anular' ? 'warning' :
+          modalConfirm.type === 'contabilizar' ? 'info' :
+          'danger'
+        }
       />
     </div>
   );

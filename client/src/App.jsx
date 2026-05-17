@@ -15,6 +15,9 @@ import EstadoResultados from './pages/EstadoResultados';
 import EvolucionPatrimonio from './pages/EvolucionPatrimonio';
 import SumasSaldos from './pages/SumasSaldos';
 import Configuracion from './pages/Configuracion';
+import Retenciones from './pages/Retenciones';
+import Compras from './pages/Compras';
+import Ventas from './pages/Ventas';
 import { useContext } from 'react';
 import { Toaster } from 'react-hot-toast';
 
@@ -129,6 +132,36 @@ function AppRoutes() {
           <ProtectedRoute requierePermiso="config:update">
             <Layout>
               <Configuracion />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/retenciones"
+        element={
+          <ProtectedRoute requierePermiso="comprobantes:read">
+            <Layout>
+              <Retenciones />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/compras"
+        element={
+          <ProtectedRoute requierePermiso="comprobantes:read">
+            <Layout>
+              <Compras />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/ventas"
+        element={
+          <ProtectedRoute requierePermiso="comprobantes:read">
+            <Layout>
+              <Ventas />
             </Layout>
           </ProtectedRoute>
         }

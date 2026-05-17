@@ -155,7 +155,9 @@ export default function PlanCuentas() {
                 nodo.tipo === 'Pasivo' ? 'bg-red-100 text-red-700' :
                 nodo.tipo === 'Patrimonio' ? 'bg-purple-100 text-purple-700' :
                 nodo.tipo === 'Ingreso' ? 'bg-blue-100 text-blue-700' :
-                'bg-orange-100 text-orange-700'
+                nodo.tipo === 'Gasto' ? 'bg-orange-100 text-orange-700' :
+                nodo.tipo === 'Orden' ? 'bg-teal-100 text-teal-700' :
+                'bg-yellow-100 text-yellow-700'
               }`}>
                 {nodo.tipo}
               </span>
@@ -271,6 +273,8 @@ export default function PlanCuentas() {
                 <option value="Patrimonio">Patrimonio</option>
                 <option value="Ingreso">Ingreso</option>
                 <option value="Gasto">Gasto</option>
+                <option value="Orden">Orden</option>
+                <option value="Contingentes">Contingentes</option>
               </select>
             </div>
             <div>
@@ -342,6 +346,8 @@ export default function PlanCuentas() {
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-400"></span>Patrimonio</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-400"></span>Ingreso</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-orange-400"></span>Gasto</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-teal-400"></span>Orden</span>
+            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-yellow-400"></span>Contingentes</span>
           </div>
         </div>
         <div className="max-h-[600px] overflow-y-auto">

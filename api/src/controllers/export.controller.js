@@ -85,6 +85,15 @@ async function exportarComprobantePDF(req, res) {
     doc.moveDown(0.5);
     doc.text(`Glosa: ${comprobante.glosa}`);
     doc.text(`Estado: ${comprobante.estado.toUpperCase()}`);
+    if (comprobante.cheque) {
+      doc.text(`Cheque Nº: ${comprobante.cheque}`);
+    }
+    if (comprobante.usd || comprobante.ufv) {
+      let tasas = 'Tasas: ';
+      if (comprobante.usd) tasas += `USD ${comprobante.usd} `;
+      if (comprobante.ufv) tasas += `| UFV ${comprobante.ufv}`;
+      doc.text(tasas);
+    }
     doc.moveDown(1);
 
     // Tabla

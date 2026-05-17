@@ -15,12 +15,18 @@ import {
   LogOut,
   Menu,
   X,
+  Receipt,
+  ShoppingCart,
+  TrendingUpDown,
 } from 'lucide-react';
 
 const menuItems = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard, permiso: 'reportes:read' },
   { path: '/plan-cuentas', label: 'Plan de Cuentas', icon: BookOpen, permiso: 'plan:read' },
   { path: '/comprobantes', label: 'Comprobantes', icon: FileText, permiso: 'comprobantes:read' },
+  { path: '/retenciones', label: 'Retenciones', icon: Receipt, permiso: 'comprobantes:read' },
+  { path: '/compras', label: 'Compras', icon: ShoppingCart, permiso: 'comprobantes:read' },
+  { path: '/ventas', label: 'Ventas', icon: TrendingUpDown, permiso: 'comprobantes:read' },
   { path: '/libro-diario', label: 'Libro Diario', icon: List, permiso: 'reportes:read' },
   { path: '/libro-mayor', label: 'Libro Mayor', icon: BookOpen, permiso: 'reportes:read' },
   { path: '/balance-general', label: 'Balance General', icon: BarChart3, permiso: 'reportes:read' },

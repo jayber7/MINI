@@ -1,6 +1,68 @@
 const { Comprobante, ComprobanteDetalle, PlanCuenta, Gestion, Proyecto, Usuario, Empresa } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 
+async function resolverFechas(desde, hasta, gestionId) {
+  if (gestionId) {
+    const gestion = await Gestion.findByPk(gestionId);
+    if (gestion) {
+      return { desde: gestion.fechaInicio, hasta: gestion.fechaFin };
+    }
+  }
+  return { desde, hasta };
+}
+
+function aplicarRollUp(cuentas, campoSaldo = 'saldo') {
+  const mapa = {};
+  cuentas.forEach((c) => {
+    mapa[c.codigo] = { ...c, _saldoOriginal: c[campoSaldo] || 0, hijos: [] };
+  });
+
+  const raices = [];
+  const codigos = Object.keys(mapa).sort();
+
+  codigos.forEach((codigo) => {
+    const partes = codigo.split('.');
+    if (partes.length <= 1) {
+      raices.push(mapa[codigo]);
+      return;
+    }
+    const partesPadre = partes.slice(0, -1);
+    const codigoPadre = partesPadre.join('.');
+    if (mapa[codigoPadre]) {
+      mapa[codigoPadre].hijos.push(mapa[codigo]);
+    } else {
+      raices.push(mapa[codigo]);
+    }
+  });
+
+  function acumular(nodo) {
+    if (!nodo.hijos || nodo.hijos.length === 0) {
+      return nodo._saldoOriginal || 0;
+    }
+    let suma = 0;
+    nodo.hijos.forEach((hijo) => {
+      suma += acumular(hijo);
+    });
+    nodo[campoSaldo] = nodo._saldoOriginal + suma;
+    return nodo[campoSaldo];
+  }
+
+  raices.forEach((r) => acumular(r));
+
+  function aplanar(nodo, lista = []) {
+    const { hijos, ...resto } = nodo;
+    lista.push(resto);
+    if (hijos) {
+      hijos.forEach((h) => aplanar(h, lista));
+    }
+    return lista;
+  }
+
+  const resultado = [];
+  raices.forEach((r) => aplanar(r, resultado));
+  return resultado;
+}
+
 async function obtenerLibroDiario(desde, hasta, proyecto) {
   const where = { estado: 'activo' };
 
@@ -59,8 +121,9 @@ async function obtenerLibroDiario(desde, hasta, proyecto) {
 
 async function libroDiario(req, res) {
   try {
-    const { desde, hasta, proyecto } = req.query;
-    const resultado = await obtenerLibroDiario(desde, hasta, proyecto);
+    const { desde, hasta, proyecto, gestionId } = req.query;
+    const fechas = await resolverFechas(desde, hasta, gestionId);
+    const resultado = await obtenerLibroDiario(fechas.desde, fechas.hasta, proyecto);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Libro Diario:', error);
@@ -144,8 +207,9 @@ async function obtenerLibroMayor(desde, hasta, codigoCuenta) {
 
 async function libroMayor(req, res) {
   try {
-    const { desde, hasta, codigoCuenta } = req.query;
-    const resultado = await obtenerLibroMayor(desde, hasta, codigoCuenta);
+    const { desde, hasta, codigoCuenta, gestionId } = req.query;
+    const fechas = await resolverFechas(desde, hasta, gestionId);
+    const resultado = await obtenerLibroMayor(fechas.desde, fechas.hasta, codigoCuenta);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Libro Mayor:', error);
@@ -184,6 +248,8 @@ async function obtenerBalanceGeneral(desde, hasta) {
     utilidadEjercicio: 0,
   };
 
+  const cuentasConSaldo = [];
+
   cuentas.forEach((cuenta) => {
     let debeTotal = 0;
     let haberTotal = 0;
@@ -193,32 +259,36 @@ async function obtenerBalanceGeneral(desde, hasta) {
       haberTotal += parseFloat(d.haber) || 0;
     });
 
-    if (debeTotal === 0 && haberTotal === 0) return;
-
     const saldo = cuenta.tipo === 'Activo'
       ? debeTotal - haberTotal
       : haberTotal - debeTotal;
-
-    if (saldo === 0) return;
 
     const item = {
       codigo: cuenta.codigo,
       nombre: cuenta.nombre,
       nivel: cuenta.nivel,
+      tipo: cuenta.tipo,
       saldo,
+      debeTotal,
+      haberTotal,
     };
 
-    if (cuenta.tipo === 'Activo') {
-      resultado.activo.cuentas.push(item);
-      resultado.activo.total += saldo;
-    } else if (cuenta.tipo === 'Pasivo') {
-      resultado.pasivo.cuentas.push(item);
-      resultado.pasivo.total += saldo;
-    } else if (cuenta.tipo === 'Patrimonio') {
-      resultado.patrimonio.cuentas.push(item);
-      resultado.patrimonio.total += saldo;
+    if (cuenta.tipo === 'Activo' || cuenta.tipo === 'Pasivo' || cuenta.tipo === 'Patrimonio') {
+      cuentasConSaldo.push(item);
     }
   });
+
+  const activoRaw = cuentasConSaldo.filter((c) => c.tipo === 'Activo');
+  const pasivoRaw = cuentasConSaldo.filter((c) => c.tipo === 'Pasivo');
+  const patrimonioRaw = cuentasConSaldo.filter((c) => c.tipo === 'Patrimonio');
+
+  resultado.activo.cuentas = aplicarRollUp(activoRaw, 'saldo');
+  resultado.pasivo.cuentas = aplicarRollUp(pasivoRaw, 'saldo');
+  resultado.patrimonio.cuentas = aplicarRollUp(patrimonioRaw, 'saldo');
+
+  resultado.activo.cuentas.forEach((c) => { if (c.nivel === 1) resultado.activo.total += c.saldo; });
+  resultado.pasivo.cuentas.forEach((c) => { if (c.nivel === 1) resultado.pasivo.total += c.saldo; });
+  resultado.patrimonio.cuentas.forEach((c) => { if (c.nivel === 1) resultado.patrimonio.total += c.saldo; });
 
   resultado.utilidadEjercicio = await calcularUtilidad(desde, hasta);
   resultado.patrimonio.total += resultado.utilidadEjercicio;
@@ -228,8 +298,9 @@ async function obtenerBalanceGeneral(desde, hasta) {
 
 async function balanceGeneral(req, res) {
   try {
-    const { desde, hasta } = req.query;
-    const resultado = await obtenerBalanceGeneral(desde, hasta);
+    const { desde, hasta, gestionId } = req.query;
+    const fechas = await resolverFechas(desde, hasta, gestionId);
+    const resultado = await obtenerBalanceGeneral(fechas.desde, fechas.hasta);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Balance General:', error);
@@ -244,17 +315,24 @@ async function obtenerEstadoResultados(desde, hasta) {
   const totalIngresos = ingresos.reduce((sum, c) => sum + c.saldo, 0);
   const totalGastos = gastos.reduce((sum, c) => sum + c.saldo, 0);
 
+  const utilidadAntesIUE = totalIngresos - totalGastos;
+  const iue = utilidadAntesIUE > 0 ? utilidadAntesIUE * 0.25 : 0;
+  const utilidadNeta = utilidadAntesIUE > 0 ? utilidadAntesIUE - iue : utilidadAntesIUE;
+
   return {
     ingresos: { total: totalIngresos, cuentas: ingresos },
     gastos: { total: totalGastos, cuentas: gastos },
-    utilidad: totalIngresos - totalGastos,
+    utilidad: utilidadAntesIUE,
+    iue,
+    utilidadNeta,
   };
 }
 
 async function estadoResultados(req, res) {
   try {
-    const { desde, hasta } = req.query;
-    const resultado = await obtenerEstadoResultados(desde, hasta);
+    const { desde, hasta, gestionId } = req.query;
+    const fechas = await resolverFechas(desde, hasta, gestionId);
+    const resultado = await obtenerEstadoResultados(fechas.desde, fechas.hasta);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Estado de Resultados:', error);
@@ -278,8 +356,9 @@ async function obtenerEvolucionPatrimonio(desde, hasta) {
 
 async function evolucionPatrimonio(req, res) {
   try {
-    const { desde, hasta } = req.query;
-    const resultado = await obtenerEvolucionPatrimonio(desde, hasta);
+    const { desde, hasta, gestionId } = req.query;
+    const fechas = await resolverFechas(desde, hasta, gestionId);
+    const resultado = await obtenerEvolucionPatrimonio(fechas.desde, fechas.hasta);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Evolución del Patrimonio:', error);
@@ -312,12 +391,7 @@ async function obtenerSumasSaldos(desde, hasta) {
     order: [['codigo', 'ASC']],
   });
 
-  let totalSumaDebe = 0;
-  let totalSumaHaber = 0;
-  let totalSaldoDeudor = 0;
-  let totalSaldoAcreedor = 0;
-
-  const resultado = cuentas
+  const cuentasConSaldos = cuentas
     .map((cuenta) => {
       let sumaDebe = 0;
       let sumaHaber = 0;
@@ -326,8 +400,6 @@ async function obtenerSumasSaldos(desde, hasta) {
         sumaDebe += parseFloat(d.debe) || 0;
         sumaHaber += parseFloat(d.haber) || 0;
       });
-
-      if (sumaDebe === 0 && sumaHaber === 0) return null;
 
       let saldoDeudor = 0;
       let saldoAcreedor = 0;
@@ -346,11 +418,6 @@ async function obtenerSumasSaldos(desde, hasta) {
         }
       }
 
-      totalSumaDebe += sumaDebe;
-      totalSumaHaber += sumaHaber;
-      totalSaldoDeudor += saldoDeudor;
-      totalSaldoAcreedor += saldoAcreedor;
-
       return {
         codigo: cuenta.codigo,
         nombre: cuenta.nombre,
@@ -361,11 +428,24 @@ async function obtenerSumasSaldos(desde, hasta) {
         saldoDeudor,
         saldoAcreedor,
       };
-    })
-    .filter(Boolean);
+    });
+
+  const conRollUp = aplicarRollUp(cuentasConSaldos, 'saldoDeudor');
+
+  let totalSumaDebe = 0;
+  let totalSumaHaber = 0;
+  let totalSaldoDeudor = 0;
+  let totalSaldoAcreedor = 0;
+
+  conRollUp.forEach((c) => {
+    totalSumaDebe += c.sumaDebe || 0;
+    totalSumaHaber += c.sumaHaber || 0;
+    totalSaldoDeudor += c.saldoDeudor || 0;
+    totalSaldoAcreedor += c.saldoAcreedor || 0;
+  });
 
   return {
-    cuentas: resultado,
+    cuentas: conRollUp,
     totales: {
       sumaDebe: totalSumaDebe,
       sumaHaber: totalSumaHaber,
@@ -377,8 +457,9 @@ async function obtenerSumasSaldos(desde, hasta) {
 
 async function sumasSaldos(req, res) {
   try {
-    const { desde, hasta } = req.query;
-    const resultado = await obtenerSumasSaldos(desde, hasta);
+    const { desde, hasta, gestionId } = req.query;
+    const fechas = await resolverFechas(desde, hasta, gestionId);
+    const resultado = await obtenerSumasSaldos(fechas.desde, fechas.hasta);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Sumas y Saldos:', error);
@@ -412,7 +493,7 @@ async function calcularPorTipo(tipo, desde, hasta) {
     order: [['codigo', 'ASC']],
   });
 
-  return cuentas
+  const cuentasConSaldo = cuentas
     .map((cuenta) => {
       let debeTotal = 0;
       let haberTotal = 0;
@@ -422,20 +503,18 @@ async function calcularPorTipo(tipo, desde, hasta) {
         haberTotal += parseFloat(d.haber) || 0;
       });
 
-      if (debeTotal === 0 && haberTotal === 0) return null;
-
       const saldo = tipo === 'Ingreso' ? haberTotal - debeTotal : debeTotal - haberTotal;
-
-      if (saldo === 0) return null;
 
       return {
         codigo: cuenta.codigo,
         nombre: cuenta.nombre,
         nivel: cuenta.nivel,
+        tipo: cuenta.tipo,
         saldo,
       };
-    })
-    .filter(Boolean);
+    });
+
+  return aplicarRollUp(cuentasConSaldo, 'saldo');
 }
 
 async function calcularUtilidad(desde, hasta) {

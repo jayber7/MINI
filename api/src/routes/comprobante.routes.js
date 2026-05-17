@@ -12,6 +12,7 @@ router.get('/:comprobanteId/totales', requirePermisos('comprobantes:read'), comp
 router.post('/', requirePermisos('comprobantes:create'), comprobanteController.crear);
 router.put('/:id', requirePermisos('comprobantes:update'), comprobanteController.actualizar);
 router.post('/:id/anular', requirePermisos('comprobantes:anular'), comprobanteController.anular);
+router.post('/:id/contabilizar', requirePermisos('comprobantes:contabilizar'), comprobanteController.contabilizar);
 router.delete('/:id', requirePermisos('comprobantes:update'), comprobanteController.eliminar);
 
 module.exports = router;

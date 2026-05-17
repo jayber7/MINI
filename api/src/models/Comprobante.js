@@ -67,6 +67,30 @@ const Comprobante = sequelize.define('Comprobante', {
     type: DataTypes.DATE,
     allowNull: true,
   },
+  usuarioIdContabiliza: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'usuarios',
+      key: 'id',
+    },
+  },
+  fechaContabilizacion: {
+    type: DataTypes.DATE,
+    allowNull: true,
+  },
+  cheque: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
+  usd: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  ufv: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
 }, {
   timestamps: true,
   tableName: 'comprobantes',

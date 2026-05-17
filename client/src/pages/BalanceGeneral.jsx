@@ -7,12 +7,32 @@ export default function BalanceGeneral() {
   const [cargando, setCargando] = useState(false);
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [gestionId, setGestionId] = useState('');
+  const [gestiones, setGestiones] = useState([]);
   const [exportando, setExportando] = useState(false);
+
+  useEffect(() => {
+    api.get('/gestiones').then(({ data }) => {
+      setGestiones(data);
+      if (data.length > 0 && !gestionId) {
+        setGestionId(data[0].id);
+        setDesde(data[0].fechaInicio);
+        setHasta(data[0].fechaFin);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleGestionChange = (id) => {
+    setGestionId(id);
+    const g = gestiones.find((x) => x.id === parseInt(id));
+    if (g) { setDesde(g.fechaInicio); setHasta(g.fechaFin); }
+  };
 
   const cargarDatos = async () => {
     setCargando(true);
     try {
       const params = {};
+      if (gestionId) params.gestionId = gestionId;
       if (desde) params.desde = desde;
       if (hasta) params.hasta = hasta;
 
@@ -26,12 +46,13 @@ export default function BalanceGeneral() {
   };
 
   useEffect(() => {
-    cargarDatos();
-  }, []);
+    if (gestionId) cargarDatos();
+  }, [gestionId]);
 
   const handleExportPDF = () => {
     setExportando(true);
     const params = new URLSearchParams();
+    if (gestionId) params.append('gestionId', gestionId);
     if (desde) params.append('desde', desde);
     if (hasta) params.append('hasta', hasta);
     exportarArchivo(`/export/balance-general/pdf?${params}`, 'balance_general.pdf')
@@ -41,6 +62,7 @@ export default function BalanceGeneral() {
   const handleExportExcel = () => {
     setExportando(true);
     const params = new URLSearchParams();
+    if (gestionId) params.append('gestionId', gestionId);
     if (desde) params.append('desde', desde);
     if (hasta) params.append('hasta', hasta);
     exportarArchivo(`/export/balance-general/excel?${params}`, 'balance_general.xlsx')
@@ -62,26 +84,30 @@ export default function BalanceGeneral() {
   const totalPasivoPatrimonio = datos.pasivo.total + datos.patrimonio.total;
   const balanceado = Math.abs(datos.activo.total - totalPasivoPatrimonio) < 0.01;
 
-  const renderCuentas = (cuentas, nivel = 0) => {
-    return cuentas.map((c, i) => (
-      <tr key={i} className="hover:bg-gray-50">
-        <td
-          className="px-4 py-2 font-mono text-indigo-600"
-          style={{ paddingLeft: `${nivel * 20 + 16}px` }}
-        >
-          {c.codigo}
-        </td>
-        <td
-          className={`px-4 py-2 ${c.nivel <= 2 ? 'font-semibold text-gray-800' : 'text-gray-600'}`}
-          style={{ paddingLeft: `${nivel * 20 + 16}px` }}
-        >
-          {c.nombre}
-        </td>
-        <td className="px-4 py-2 text-right font-mono">
-          Bs. {formatBs(c.saldo)}
-        </td>
-      </tr>
-    ));
+  const renderCuentas = (cuentas) => {
+    return cuentas.map((c, i) => {
+      const esPadre = c.nivel && c.nivel <= 2;
+      const indent = (c.nivel || 1) * 20 + 16;
+      return (
+        <tr key={i} className={`hover:bg-gray-50 ${esPadre ? 'bg-gray-50' : ''}`}>
+          <td
+            className={`px-4 py-2 font-mono text-indigo-600 ${esPadre ? 'font-bold' : ''}`}
+            style={{ paddingLeft: `${indent}px` }}
+          >
+            {c.codigo}
+          </td>
+          <td
+            className={`px-4 py-2 ${esPadre ? 'font-bold text-gray-800' : 'text-gray-600'}`}
+            style={{ paddingLeft: `${indent}px` }}
+          >
+            {c.nombre}
+          </td>
+          <td className={`px-4 py-2 text-right font-mono ${esPadre ? 'font-bold' : ''}`}>
+            Bs. {formatBs(c.saldo || 0)}
+          </td>
+        </tr>
+      );
+    });
   };
 
   return (
@@ -111,6 +137,13 @@ export default function BalanceGeneral() {
       {/* Filtros */}
       <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
         <div className="flex items-center gap-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Gestión</label>
+            <select value={gestionId} onChange={(e) => handleGestionChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[150px]">
+              <option value="">Seleccionar</option>
+              {gestiones.map((g) => (<option key={g.id} value={g.id}>{g.year} - {g.glosa}</option>))}
+            </select>
+          </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Desde</label>
             <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />

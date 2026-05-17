@@ -7,12 +7,32 @@ export default function EvolucionPatrimonio() {
   const [cargando, setCargando] = useState(false);
   const [desde, setDesde] = useState('');
   const [hasta, setHasta] = useState('');
+  const [gestionId, setGestionId] = useState('');
+  const [gestiones, setGestiones] = useState([]);
   const [exportando, setExportando] = useState(false);
+
+  useEffect(() => {
+    api.get('/gestiones').then(({ data }) => {
+      setGestiones(data);
+      if (data.length > 0 && !gestionId) {
+        setGestionId(data[0].id);
+        setDesde(data[0].fechaInicio);
+        setHasta(data[0].fechaFin);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const handleGestionChange = (id) => {
+    setGestionId(id);
+    const g = gestiones.find((x) => x.id === parseInt(id));
+    if (g) { setDesde(g.fechaInicio); setHasta(g.fechaFin); }
+  };
 
   const cargarDatos = async () => {
     setCargando(true);
     try {
       const params = {};
+      if (gestionId) params.gestionId = gestionId;
       if (desde) params.desde = desde;
       if (hasta) params.hasta = hasta;
 
@@ -26,12 +46,13 @@ export default function EvolucionPatrimonio() {
   };
 
   useEffect(() => {
-    cargarDatos();
-  }, []);
+    if (gestionId) cargarDatos();
+  }, [gestionId]);
 
   const handleExportPDF = () => {
     setExportando(true);
     const params = new URLSearchParams();
+    if (gestionId) params.append('gestionId', gestionId);
     if (desde) params.append('desde', desde);
     if (hasta) params.append('hasta', hasta);
     exportarArchivo(`/export/evolucion-patrimonio/pdf?${params}`, 'evolucion_patrimonio.pdf')
@@ -41,6 +62,7 @@ export default function EvolucionPatrimonio() {
   const handleExportExcel = () => {
     setExportando(true);
     const params = new URLSearchParams();
+    if (gestionId) params.append('gestionId', gestionId);
     if (desde) params.append('desde', desde);
     if (hasta) params.append('hasta', hasta);
     exportarArchivo(`/export/evolucion-patrimonio/excel?${params}`, 'evolucion_patrimonio.xlsx')
@@ -86,6 +108,13 @@ export default function EvolucionPatrimonio() {
       {/* Filtros */}
       <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
         <div className="flex items-center gap-4">
+          <div>
+            <label className="block text-xs text-gray-500 mb-1">Gestión</label>
+            <select value={gestionId} onChange={(e) => handleGestionChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[150px]">
+              <option value="">Seleccionar</option>
+              {gestiones.map((g) => (<option key={g.id} value={g.id}>{g.year} - {g.glosa}</option>))}
+            </select>
+          </div>
           <div>
             <label className="block text-xs text-gray-500 mb-1">Desde</label>
             <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />

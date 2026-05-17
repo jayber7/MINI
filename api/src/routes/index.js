@@ -8,6 +8,9 @@ const gestionRoutes = require('./gestion.routes');
 const proyectoRoutes = require('./proyecto.routes');
 const reporteRoutes = require('./reporte.routes');
 const exportRoutes = require('./export.routes');
+const retencionRoutes = require('./retencion.routes');
+const compraRoutes = require('./compra.routes');
+const ventaRoutes = require('./venta.routes');
 
 module.exports = {
   authRoutes,
@@ -20,4 +23,7 @@ module.exports = {
   proyectoRoutes,
   reporteRoutes,
   exportRoutes,
+  retencionRoutes,
+  compraRoutes,
+  ventaRoutes,
 };

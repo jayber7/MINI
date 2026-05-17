@@ -11,6 +11,9 @@ const Comprobante = require('./Comprobante');
 const ComprobanteDetalle = require('./ComprobanteDetalle');
 const CuentaEspecifica = require('./CuentaEspecifica');
 const Cotizacion = require('./Cotizacion');
+const Retencion = require('./Retencion');
+const Compra = require('./Compra');
+const Venta = require('./Venta');
 
 // Roles y Permisos (muchos a muchos)
 Rol.belongsToMany(Permiso, { through: RolPermiso, foreignKey: 'rolId' });
@@ -68,6 +71,26 @@ ComprobanteDetalle.belongsTo(PlanCuenta, { foreignKey: 'planCuentaId' });
 Empresa.hasMany(CuentaEspecifica, { foreignKey: 'empresaId' });
 CuentaEspecifica.belongsTo(Empresa, { foreignKey: 'empresaId' });
 
+// Empresa tiene muchas Retenciones
+Empresa.hasMany(Retencion, { foreignKey: 'empresaId' });
+Retencion.belongsTo(Empresa, { foreignKey: 'empresaId' });
+
+// Comprobante puede tener retenciones
+Comprobante.hasMany(Retencion, { foreignKey: 'comprobanteId' });
+Retencion.belongsTo(Comprobante, { foreignKey: 'comprobanteId' });
+
+// Empresa tiene muchas Compras y Ventas
+Empresa.hasMany(Compra, { foreignKey: 'empresaId' });
+Compra.belongsTo(Empresa, { foreignKey: 'empresaId' });
+Empresa.hasMany(Venta, { foreignKey: 'empresaId' });
+Venta.belongsTo(Empresa, { foreignKey: 'empresaId' });
+
+// Comprobante puede tener compras/ventas contabilizadas
+Comprobante.hasMany(Compra, { foreignKey: 'comprobanteId' });
+Compra.belongsTo(Comprobante, { foreignKey: 'comprobanteId' });
+Comprobante.hasMany(Venta, { foreignKey: 'comprobanteId' });
+Venta.belongsTo(Comprobante, { foreignKey: 'comprobanteId' });
+
 module.exports = {
   sequelize,
   Rol,
@@ -82,4 +105,7 @@ module.exports = {
   ComprobanteDetalle,
   CuentaEspecifica,
   Cotizacion,
+  Retencion,
+  Compra,
+  Venta,
 };
