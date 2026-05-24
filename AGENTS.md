@@ -16,11 +16,10 @@
    - [Fase 2: Core Contable](#fase-2-core-contable--plan-de-cuentas-y-comprobantes)
    - [Fase 3: Reportes Contables](#fase-3-reportes-contables)
    - [Fase 4: Exportación PDF y Excel](#fase-4-exportación-pdf-y-excel)
-7. [Fases Pendientes](#fases-pendientes)
-   - [Fase 5: Pulido UX](#fase-5-pulido-ux)
-8. [Guía de Uso](#guía-de-uso)
-9. [Estructura de Archivos](#estructura-de-archivos)
-10. [Endpoints API](#endpoints-api)
+   - [Fase 5: Pulido UX y Módulos Adicionales](#fase-5-pulido-ux-y-módulos-adicionales)
+7. [Guía de Uso](#guía-de-uso)
+8. [Estructura de Archivos](#estructura-de-archivos)
+9. [Endpoints API](#endpoints-api)
 
 ---
 
@@ -29,12 +28,16 @@
 EICAP MINI es un sistema contable web que implementa las funcionalidades principales del sistema contable EICAP de escritorio (desarrollado en .NET Windows Forms con SQLite). El sistema permite:
 
 - Gestión de usuarios, roles y permisos
-- Plan de cuentas jerárquico
+- Plan de cuentas jerárquico (hasta 5 niveles + tipos Orden y Contingentes)
 - Registro de comprobantes contables con validación de balance (debe == haber)
-- Generación de reportes contables: Libro Diario, Libro Mayor, Balance General, Estado de Resultados, Evolución del Patrimonio, Balance de Sumas y Saldos
-- Configuración de empresa y gestión fiscal
+- Módulos de Compras, Ventas y Retenciones con auto-generación de asientos contables
+- Generación de reportes contables: Libro Diario, Libro Mayor, Balance General, Estado de Resultados (con IUE 25%), Evolución del Patrimonio, Balance de Sumas y Saldos
+- Filtro por gestión fiscal en todos los reportes
+- Exportación a PDF y Excel
+- Configuración de empresa con datos fiscales bolivianos (IVA, IUE, RC-IVA, IT)
 
 **Credenciales por defecto:** `admin` / `admin123`
+**Empresa seed:** Zapatería Elegante SRL con datos completos 2025–2026
 
 ---
 
@@ -74,6 +77,7 @@ EICAP MINI es un sistema contable web que implementa las funcionalidades princip
 - **Autenticación:** JWT stateless con interceptor de axios
 - **Autorización:** Basada en roles y permisos (RBAC)
 - **ORM:** Sequelize con asociaciones y hooks
+- **Seed idempotente:** Los datos iniciales no se duplican al reiniciar
 
 ---
 
@@ -83,7 +87,7 @@ EICAP MINI es un sistema contable web que implementa las funcionalidades princip
 
 | Tecnología | Versión | Propósito |
 |---|---|---|
-| Node.js | 18.x | Runtime |
+| Node.js | 20.x | Runtime |
 | Express | 5.2.1 | Framework web |
 | Sequelize | 6.37.8 | ORM |
 | SQLite (sqlite3) | 5.1.6 | Base de datos |
@@ -125,7 +129,8 @@ RolPermiso (rolId, permisoId)
 ### Core Contable
 
 ```
-Empresa (id, nombre, nit, direccion, telefono, firmas..., gestionActualId)
+Empresa (id, nombre, nit, direccion, telefono, firmas..., gestionActualId,
+         ivaExento, ivaExentoRm, metodoEvaluacion, generarPdf)
     ↓
 Gestion (id, year, glosa, fechaInicio, fechaFin, actividad, empresaId)
     ↓
@@ -135,7 +140,10 @@ PlanCuenta (hijos)
 
 Proyecto (id, nombre, empresaId)
 
-Comprobante (id, numero, tipoComprobante, glosa, fecha, estado, gestionId, empresaId, proyectoId, usuarioIdCrea, usuarioIdAnula)
+Comprobante (id, numero, tipoComprobante, glosa, fecha, estado, gestionId,
+             empresaId, proyectoId, usuarioIdCrea, usuarioIdAnula,
+             usuarioIdContabiliza, fechaContabilizacion,
+             cheque, usd, ufv)
     ↓
 ComprobanteDetalle (id, comprobanteId, planCuentaId, glosa, debe, haber)
     ↓
@@ -143,6 +151,21 @@ PlanCuenta
 
 CuentaEspecifica (id, codigo, numero, nombre, empresaId)
 Cotizacion (id, fecha, ufv, usd)
+```
+
+### Compras, Ventas y Retenciones
+
+```
+Compra (id, fecha, nit, razonSocial, numeroCompra, numeroDui,
+        importeTotal, importeNoSujeto, descuentos, codigoControl,
+        tipo, glosa, contabilizado, comprobanteId, empresaId)
+
+Venta (id, fecha, nit, razonSocial, numeroVenta, numeroAutorizacion,
+       importeTotal, importeExento, descuentos, codigoControl,
+       tipo, glosa, contabilizado, comprobanteId, empresaId)
+
+Retencion (id, fecha, tipoRetencion, porcentaje, montoBase, montoRetenido,
+           agenteRetencion, glosa, contabilizado, comprobanteId, empresaId)
 ```
 
 ### Tipos de Comprobante
@@ -153,7 +176,7 @@ Cotizacion (id, fecha, ufv, usd)
 ### Estados de Comprobante
 - `activo` — Comprobante vigente
 - `anulado` — Comprobante anulado
-- `contabilizado` — Comprobante contabilizado
+- `contabilizado` — Comprobante contabilizado (no editable)
 
 ### Tipos de Cuenta
 - `Activo` — Cuentas de activo
@@ -161,6 +184,8 @@ Cotizacion (id, fecha, ufv, usd)
 - `Patrimonio` — Cuentas de patrimonio
 - `Ingreso` — Cuentas de ingreso
 - `Gasto` — Cuentas de gasto
+- `Orden` — Cuentas de orden
+- `Contingente` — Cuentas contingentes
 
 ### Roles Predefinidos
 
@@ -203,7 +228,7 @@ Cotizacion (id, fecha, ufv, usd)
 ```
 api/src/
 ├── config/database.js          # Conexión Sequelize SQLite
-├── models/                     # 12 modelos con asociaciones
+├── models/                     # 16 modelos con asociaciones
 │   ├── index.js                # Asociaciones entre modelos
 │   ├── Usuario.js              # Con hooks de hash de password
 │   ├── Rol.js
@@ -216,7 +241,10 @@ api/src/
 │   ├── Comprobante.js
 │   ├── ComprobanteDetalle.js
 │   ├── CuentaEspecifica.js
-│   └── Cotizacion.js
+│   ├── Cotizacion.js
+│   ├── Retencion.js
+│   ├── Compra.js
+│   └── Venta.js
 ├── middleware/
 │   ├── auth.js                 # Verificación JWT
 │   ├── roles.js                # requirePermisos, requireRol
@@ -227,19 +255,26 @@ api/src/
 │   ├── auth.controller.js      # login, register, getMe
 │   ├── usuario.controller.js   # CRUD completo usuarios
 │   ├── rol.controller.js       # CRUD roles + asignación permisos
-│   └── empresa.controller.js   # CRUD empresa
+│   ├── empresa.controller.js   # CRUD empresa
+│   ├── plan.controller.js      # CRUD plan de cuentas
+│   ├── comprobante.controller.js # CRUD + anular + contabilizar
+│   ├── gestion.controller.js   # Gestión períodos fiscales
+│   ├── proyecto.controller.js  # Centros de costo
+│   ├── reporte.controller.js   # 6 reportes contables
+│   ├── export.controller.js    # PDF y Excel
+│   ├── retencion.controller.js # CRUD + contabilizar
+│   ├── compra.controller.js    # CRUD + contabilizar
+│   └── venta.controller.js     # CRUD + contabilizar
 ├── routes/
 │   ├── index.js                # Agregador de rutas
-│   ├── auth.routes.js
-│   ├── usuarios.routes.js
-│   ├── roles.routes.js
-│   └── empresa.routes.js
+│   └── ...                     # 13 archivos de rutas
 ├── seeds/
-│   └── seed.js                 # 19 permisos, 3 roles, admin, empresa, gestión, 35 cuentas
-└── index.js                    # Entry point Express
+│   ├── seed.js                 # Permisos, roles, admin, empresa base
+│   └── seedZapateria.js        # Datos completos Zapatería Elegante SRL
+└── index.js                    # Entry point Express (sirve estáticos en prod)
 ```
 
-**Endpoints implementados (15):**
+**Endpoints implementados:**
 
 | Método | Ruta | Descripción | Auth | Permiso |
 |---|---|---|---|---|
@@ -261,12 +296,12 @@ api/src/
 | GET | `/api/empresa` | Obtener empresa actual | Sí | — |
 
 **Seeds iniciales:**
-- 19 permisos organizados por módulo (usuarios, roles, plan, comprobantes, reportes, config)
+- 20 permisos organizados por módulo (incluye `comprobantes:contabilizar`)
 - 3 roles: admin (todos), contador (sin gestión usuarios/roles), auxiliar (lectura + comprobantes)
 - Usuario admin: `admin` / `admin123`
-- Empresa: "Mi Empresa Académica" con NIT 123456789
-- Gestión fiscal 2026
-- Plan de cuentas con 35 cuentas jerárquicas (5 tipos)
+- Empresa: "Zapatería Elegante SRL" con NIT 5012345678
+- Gestiones fiscales 2025 y 2026
+- Plan de cuentas con 80 cuentas jerárquicas (7 tipos)
 
 #### Frontend
 
@@ -276,23 +311,35 @@ client/src/
 ├── context/
 │   └── AuthContext.jsx         # AuthProvider, login, logout, tienePermiso, tieneRol
 ├── services/
-│   └── api.js                  # Axios instance con interceptors JWT
+│   └── api.js                  # Axios instance con interceptors JWT + exportarArchivo
 ├── components/
 │   ├── Layout.jsx              # Sidebar responsive con menú dinámico
-│   └── ProtectedRoute.jsx      # Ruta protegida con verificación de permisos
+│   ├── ProtectedRoute.jsx      # Ruta protegida con verificación de permisos
+│   └── ConfirmModal.jsx        # Modal reutilizable para acciones destructivas
 ├── pages/
-│   ├── Login.jsx               # Página de login con validación
-│   ├── Dashboard.jsx           # Dashboard con stats y acciones rápidas
-│   ├── Usuarios.jsx            # CRUD usuarios con tabla y formulario
-│   ├── Roles.jsx               # CRUD roles con asignación visual de permisos
-│   └── [placeholders]          # Páginas placeholder para módulos futuros
+│   ├── Login.jsx
+│   ├── Dashboard.jsx
+│   ├── Usuarios.jsx
+│   ├── Roles.jsx
+│   ├── PlanCuentas.jsx
+│   ├── Comprobantes.jsx
+│   ├── Configuracion.jsx
+│   ├── LibroDiario.jsx
+│   ├── LibroMayor.jsx
+│   ├── BalanceGeneral.jsx
+│   ├── EstadoResultados.jsx
+│   ├── EvolucionPatrimonio.jsx
+│   ├── SumasSaldos.jsx
+│   ├── Retenciones.jsx
+│   ├── Compras.jsx
+│   └── Ventas.jsx
 └── App.jsx                     # Router principal con rutas protegidas
 ```
 
 **Características:**
 - React Router con rutas protegidas por permisos
 - AuthContext con login/logout/verificación de permisos
-- Sidebar responsive con 12 items de menú
+- Sidebar responsive con 15+ items de menú
 - Interceptor axios: auto-adjunta token, redirige a login en 401
 - CRUD completo de usuarios con toggle activo/inactivo
 - CRUD de roles con asignación visual de permisos por módulo
@@ -310,7 +357,7 @@ client/src/
 | Controller | Métodos | Descripción |
 |---|---|---|
 | `plan.controller.js` | listar, obtener, crear, actualizar, eliminar, generarSiguienteCodigo | CRUD plan de cuentas con validación de hijos |
-| `comprobante.controller.js` | listar, obtener, crear, actualizar, anular, eliminar, obtenerTotales | CRUD comprobantes con **validación de balance** |
+| `comprobante.controller.js` | listar, obtener, crear, actualizar, anular, contabilizar, eliminar, obtenerTotales | CRUD comprobantes con **validación de balance** |
 | `gestion.controller.js` | listar, obtener, obtenerActual, crear, actualizar, establecerActual, eliminar | Gestión de períodos fiscales |
 | `proyecto.controller.js` | listar, obtener, crear, actualizar, eliminar | Centros de costo |
 
@@ -326,6 +373,7 @@ client/src/
 - `POST /api/comprobantes` — Crear comprobante (permiso: comprobantes:create)
 - `PUT /api/comprobantes/:id` — Actualizar comprobante (permiso: comprobantes:update)
 - `POST /api/comprobantes/:id/anular` — Anular comprobante (permiso: comprobantes:anular)
+- `POST /api/comprobantes/:id/contabilizar` — Contabilizar comprobante (permiso: comprobantes:contabilizar)
 - `DELETE /api/comprobantes/:id` — Eliminar comprobante (permiso: comprobantes:update)
 - `GET /api/gestiones` — Lista gestiones
 - `GET /api/gestiones/actual` — Gestión actual
@@ -336,6 +384,7 @@ client/src/
 - **Numeración automática:** Si no se proporciona número, genera el siguiente correlativo por gestión
 - **Estado obligatorio:** Solo comprobantes `activo` pueden editarse o eliminarse
 - **Anulación:** Mantiene registro pero marca como `anulado`, registra usuario y fecha de anulación
+- **Contabilización:** Transición `activo` → `contabilizado`, registra usuario y fecha, bloquea edición/eliminación
 - **Protección de hijos:** No se puede eliminar una cuenta del plan que tenga cuentas hijas
 
 #### Frontend
@@ -344,9 +393,9 @@ client/src/
 
 | Página | Características |
 |---|---|
-| **Plan de Cuentas** | Vista en árbol expandible, colores por tipo (Activo=verde, Pasivo=rojo, etc.), CRUD inline, generación de código, leyenda de tipos |
-| **Comprobantes** | Lista con filtros (fecha, tipo, estado), formulario con líneas dinámicas (agregar/eliminar), validación de balance en tiempo real con indicador visual (✓ Balanceado / ✗ Diferencia), botones de editar/anular/eliminar, badges de estado |
-| **Configuración** | Formulario completo de empresa con datos generales y firmas para reportes |
+| **Plan de Cuentas** | Vista en árbol expandible, colores por tipo (7 tipos), CRUD inline, generación de código, búsqueda por código/nombre, leyenda de tipos |
+| **Comprobantes** | Lista con filtros (fecha, tipo, estado, búsqueda), formulario con líneas dinámicas, validación de balance en tiempo real, campos cheque/USD/UFV, botones: editar/anular/eliminar/contabilizar/exportar PDF, badges de estado (activo/contabilizado/anulado), cálculos rápidos fiscales (87%, IVA 13%, IT 3%, RC-IVA 8%/15.5%) |
+| **Configuración** | Formulario completo de empresa con datos generales, firmas para reportes, configuración IVA exento, método de evaluación |
 
 ---
 
@@ -361,13 +410,15 @@ client/src/
 | Endpoint | Descripción | Lógica |
 |---|---|---|
 | `GET /api/reportes/libro-diario` | Lista comprobantes con detalles | Filtra por estado=activo, rango de fechas, proyecto. Agrupa por comprobante con totales debe/haber |
-| `GET /api/reportes/libro-mayor` | Movimientos por cuenta con saldos | Calcula saldo corriente por tipo de cuenta. Activo/Gasto: debe-haber. Pasivo/Patrimonio/Ingreso: haber-debe |
+| `GET /api/reportes/libro-mayor` | Movimientos por cuenta con saldos | Consulta Comprobante → agrupa por cuenta. Saldo: Activo/Gasto=debe-haber, Pasivo/Patrimonio/Ingreso=haber-debe |
 | `GET /api/reportes/balance-general` | Activo = Pasivo + Patrimonio | Filtra cuentas por tipo, calcula saldos, incluye utilidad del ejercicio en patrimonio |
-| `GET /api/reportes/estado-resultados` | Ingresos - Gastos = Utilidad | Calcula totales de ingresos y gastos, retorna utilidad neta |
+| `GET /api/reportes/estado-resultados` | Ingresos - Gastos = Utilidad | Calcula totales de ingresos y gastos, aplica IUE 25%, retorna utilidad neta |
 | `GET /api/reportes/evolucion-patrimonio` | Patrimonio inicial + utilidad = final | Calcula patrimonio actual + utilidad del ejercicio |
 | `GET /api/reportes/sumas-saldos` | Suma debe/haber + saldos por cuenta | Calcula sumas y saldos deudor/acreedor con totales generales |
 
 **Funciones auxiliares:**
+- `resolverFechas(desde, hasta, gestionId)` — Resuelve fechas desde gestión fiscal o usa las proporcionadas
+- `aplicarRollUp(cuentas, campoSaldo)` — Roll-up jerárquico de saldos por código de cuenta
 - `calcularPorTipo(tipo, desde, hasta)` — Calcula saldos de cuentas por tipo
 - `calcularUtilidad(desde, hasta)` — Calcula utilidad del ejercicio (ingresos - gastos)
 
@@ -377,24 +428,22 @@ client/src/
 
 | Página | Características |
 |---|---|
-| **Libro Diario** | Comprobantes agrupados con detalles expandibles, totales por comprobante, filtros por fecha |
-| **Libro Mayor** | Tarjetas por cuenta con movimientos, saldo corriente, totales, filtro por cuenta específica |
-| **Balance General** | Dos columnas (Activo vs Pasivo+Patrimonio), verificación de ecuación contable con indicador visual ✓/✗ |
-| **Estado de Resultados** | Ingresos (azul) - Gastos (naranja) = Utilidad/Pérdida (verde/rojo) |
-| **Evolución del Patrimonio** | Patrimonio inicial + utilidad del ejercicio = patrimonio final |
-| **Sumas y Saldos** | Tabla 6 columnas con totales, indentación jerárquica, saldos deudor/acreedor |
+| **Libro Diario** | Comprobantes agrupados con detalles expandibles, totales por comprobante, selector de gestión, filtros por fecha |
+| **Libro Mayor** | Tarjetas por cuenta con movimientos, saldo corriente, totales, filtro por cuenta específica, selector de gestión |
+| **Balance General** | Dos columnas (Activo vs Pasivo+Patrimonio), verificación de ecuación contable con indicador visual ✓/✗, selector de gestión |
+| **Estado de Resultados** | Ingresos (azul) - Gastos (naranja) = Utilidad/Pérdida (verde/rojo), IUE 25% automático, selector de gestión |
+| **Evolución del Patrimonio** | Patrimonio inicial + utilidad del ejercicio = patrimonio final, selector de gestión |
+| **Sumas y Saldos** | Tabla 6 columnas con totales, indentación jerárquica, saldos deudor/acreedor, selector de gestión |
 
 **Características comunes:**
-- Filtros por rango de fechas en todos los reportes
+- Selector de gestión fiscal que auto-popula fechas (pero permite ajuste manual)
 - Formato Bs. con separadores de miles
 - Colores por tipo de cuenta
 - Indentación jerárquica por nivel
-- Botón de exportar (placeholder)
+- Botones de exportar PDF y Excel
 - Estados de carga y mensajes cuando no hay datos
 
 ---
-
-## Fases Pendientes
 
 ### Fase 4: Exportación PDF y Excel
 
@@ -406,7 +455,7 @@ client/src/
 
 | Función | Descripción |
 |---|---|
-| `exportarComprobantePDF` | PDF individual de comprobante con encabezado empresa, líneas detalladas, totales y firmas |
+| `exportarComprobantePDF` | PDF individual de comprobante con encabezado empresa, líneas detalladas, totales, cheque/USD/UFV y firmas |
 | `exportarTablaPDF` | Función genérica para PDF de reportes con cabecera empresa, tablas formateadas y pie con firmas |
 | `exportarExcelGenerico` | Función genérica para Excel con encabezado empresa, hojas con estilos, formato numérico y firmas |
 
@@ -453,26 +502,42 @@ client/src/
 - Libro Diario, Libro Mayor, Balance General, Estado de Resultados, Evolución Patrimonio, Sumas y Saldos
 - Botones separados para PDF (verde) y Excel (azul)
 - Estado `exportando` para deshabilitar botones durante la descarga
-- Filtros de fecha se pasan como parámetros query a las rutas de exportación
+- Filtros de fecha y gestionId se pasan como parámetros query a las rutas de exportación
 
 ---
 
-### Fase 5: Pulido UX
+### Fase 5: Pulido UX y Módulos Adicionales
 
-**Estado:** 🔄 EN PROGRESO
+**Estado:** ✅ COMPLETADA
 
 #### Implementado
 
 - **Notificaciones toast** — `react-hot-toast` instalado, todos los `alert()` reemplazados por toasts
-- **Modales de confirmación** — Componente `ConfirmModal.jsx` reutilizable para acciones destructivas (anular/eliminar)
+- **Modales de confirmación** — Componente `ConfirmModal.jsx` reutilizable (danger/warning/info variants)
 - **Búsqueda** — Campo de búsqueda en Plan de Cuentas (código/nombre) y Comprobantes (Nº/glosa/usuario)
 - **Paginación** — En lista de comprobantes (10 por página con controles de navegación)
+- **Selector de gestión fiscal** — En las 6 páginas de reportes, auto-popula fechas desde la tabla Gestion
+- **Campos adicionales en Comprobante** — `cheque`, `usd`, `ufv`, `usuarioIdContabiliza`, `fechaContabilizacion`
+- **Botón Contabilizar** — En lista de comprobantes, transición a estado `contabilizado` con confirmación
+- **Exportar PDF individual** — Botón en cada comprobante de la lista
+- **Filtro estado "Contabilizado"** — En filtros de comprobantes
+- **Servir frontend estático en producción** — Express sirve `client/dist/` cuando `NODE_ENV=production`
 
-#### Pendiente
+#### Módulos Compras, Ventas y Retenciones
 
-- **Dashboard mejorado** — Gráficos básicos con totales financieros, comprobantes recientes
-- **Responsive** — Mejorar diseño para tablets
-- **Atajos de teclado** — Ctrl+N para nuevo comprobante, etc.
+| Módulo | Endpoints | Auto-contabilización |
+|---|---|---|
+| **Compras** | CRUD + `POST /:id/contabilizar` | Genera comprobante egreso con Crédito Fiscal IVA (13%), costo neto (87%), cuenta por pagar |
+| **Ventas** | CRUD + `POST /:id/contabilizar` | Genera comprobante ingreso con Débito Fiscal IVA, IT 3%, venta neta |
+| **Retenciones** | CRUD + `POST /:id/contabilizar` | Genera comprobante egreso con cuenta de retención correspondiente |
+
+**Seed de datos:** `seedZapateria.js` crea registros Compra y Venta que generan automáticamente sus comprobantes vinculados (`contabilizado: true`, `comprobanteId` referenciado).
+
+**Datos sembrados:**
+- 18 compras (12 en 2025, 6 en 2026)
+- 28 ventas (23 en 2025, 5 en 2026)
+- 84 comprobantes totales (auto-generados + directos)
+- 276 líneas de detalle
 
 ---
 
@@ -480,38 +545,56 @@ client/src/
 
 ### Requisitos
 
-- Node.js 18+
+- Node.js 20+ (requerido por Vite 8)
 - npm (gestor de paquetes)
 
 ### Instalación y Ejecución
 
-#### Backend
+#### Desarrollo (dos procesos)
 
 ```bash
+# Terminal 1 - Backend
 cd api
 npm install
-cp .env.example .env  # si es necesario
-node src/index.js
+npm run dev
 # Servidor corriendo en http://localhost:3001
-```
 
-#### Frontend
-
-```bash
+# Terminal 2 - Frontend
 cd client
 npm install
 npx vite
 # App corriendo en http://localhost:5173
 ```
 
+#### Producción (un solo proceso)
+
+```powershell
+# 1. Instalar dependencias
+cd api && npm install
+cd ..\client && npm install
+
+# 2. Construir frontend
+npm run build
+
+# 3. Configurar .env para producción
+cd ..\api
+# Editar .env: NODE_ENV=production, JWT_SECRET=<clave_segura>
+
+# 4. Iniciar (sirve API + frontend en un solo puerto)
+npm start
+```
+
+Todo accesible en `http://localhost:3001`.
+
 ### Primer Uso
 
-1. Abrir `http://localhost:5173`
+1. Abrir `http://localhost:5173` (dev) o `http://localhost:3001` (prod)
 2. Iniciar sesión con `admin` / `admin123`
 3. Ir a **Configuración** y actualizar datos de la empresa
 4. Ir a **Plan de Cuentas** para revisar/agregar cuentas
 5. Ir a **Comprobantes** → **Nuevo Comprobante** para registrar movimientos
-6. Generar reportes desde el menú lateral
+6. O usar módulos **Compras/Ventas/Retenciones** para registro con auto-asiento
+7. Generar reportes desde el menú lateral, seleccionando la gestión fiscal
 
 ### Roles y Permisos
 
@@ -522,7 +605,8 @@ npx vite
 | Plan de Cuentas (crear/editar/eliminar) | ✓ | ✓ | ✗ |
 | Comprobantes (ver) | ✓ | ✓ | ✓ |
 | Comprobantes (crear/editar) | ✓ | ✓ | ✓ |
-| Comprobantes (anular) | ✓ | ✓ | ✗ |
+| Comprobantes (anular/contabilizar) | ✓ | ✓ | ✗ |
+| Compras/Ventas/Retenciones | ✓ | ✓ | ✓ |
 | Reportes | ✓ | ✓ | ✓ |
 | Gestión de Usuarios | ✓ | ✗ | ✗ |
 | Gestión de Roles | ✓ | ✗ | ✗ |
@@ -539,21 +623,23 @@ MINI/
 │   ├── package.json
 │   ├── database.sqlite               # Base de datos SQLite
 │   └── src/
-│       ├── index.js                  # Entry point
+│       ├── index.js                  # Entry point (sirve estáticos en prod)
 │       ├── config/
 │       │   └── database.js           # Conexión Sequelize
-│       ├── models/                   # 12 modelos Sequelize
-│       ├── controllers/              # 8 controllers (auth, usuario, rol, empresa, plan, comprobante, gestion, proyecto, reporte, export)
+│       ├── models/                   # 16 modelos Sequelize
+│       ├── controllers/              # 13 controllers
 │       ├── services/                 # auth.service.js
 │       ├── middleware/               # auth, roles, errorHandler
-│       ├── routes/                   # 10 archivos de rutas
+│       ├── routes/                   # 13 archivos de rutas
 │       └── seeds/
-│           └── seed.js               # Datos iniciales
+│           ├── seed.js               # Permisos, roles, admin, empresa base
+│           └── seedZapateria.js      # Datos completos Zapatería Elegante SRL
 │
 ├── client/                           # Frontend React
 │   ├── package.json
 │   ├── vite.config.js
 │   ├── tailwind.config.js
+│   ├── dist/                         # Build de producción
 │   └── src/
 │       ├── main.jsx                  # Entry point
 │       ├── App.jsx                   # Router principal
@@ -561,10 +647,11 @@ MINI/
 │       ├── context/
 │       │   └── AuthContext.jsx       # Auth provider
 │       ├── services/
-│       │   └── api.js                # Axios instance
+│       │   └── api.js                # Axios instance + exportarArchivo
 │       ├── components/
 │       │   ├── Layout.jsx            # Sidebar + header
-│       │   └── ProtectedRoute.jsx    # Route guard
+│       │   ├── ProtectedRoute.jsx    # Route guard
+│       │   └── ConfirmModal.jsx      # Modal de confirmación
 │       └── pages/
 │           ├── Login.jsx
 │           ├── Dashboard.jsx
@@ -578,7 +665,10 @@ MINI/
 │           ├── BalanceGeneral.jsx
 │           ├── EstadoResultados.jsx
 │           ├── EvolucionPatrimonio.jsx
-│           └── SumasSaldos.jsx
+│           ├── SumasSaldos.jsx
+│           ├── Retenciones.jsx
+│           ├── Compras.jsx
+│           └── Ventas.jsx
 │
 └── dotnet/                           # Proyecto original .NET (referencia)
     └── Contable/                     # Sistema contable EICAP Windows Forms
@@ -645,6 +735,7 @@ MINI/
 | POST | `/api/comprobantes` | Sí | comprobantes:create |
 | PUT | `/api/comprobantes/:id` | Sí | comprobantes:update |
 | POST | `/api/comprobantes/:id/anular` | Sí | comprobantes:anular |
+| POST | `/api/comprobantes/:id/contabilizar` | Sí | comprobantes:contabilizar |
 | DELETE | `/api/comprobantes/:id` | Sí | comprobantes:update |
 
 ### Gestiones
@@ -666,6 +757,36 @@ MINI/
 | POST | `/api/proyectos` | Sí | config:update |
 | PUT | `/api/proyectos/:id` | Sí | config:update |
 | DELETE | `/api/proyectos/:id` | Sí | config:update |
+
+### Compras
+| Método | Ruta | Auth | Permiso |
+|---|---|---|---|
+| GET | `/api/compras` | Sí | — |
+| GET | `/api/compras/:id` | Sí | — |
+| POST | `/api/compras` | Sí | — |
+| PUT | `/api/compras/:id` | Sí | — |
+| DELETE | `/api/compras/:id` | Sí | — |
+| POST | `/api/compras/:id/contabilizar` | Sí | — |
+
+### Ventas
+| Método | Ruta | Auth | Permiso |
+|---|---|---|---|
+| GET | `/api/ventas` | Sí | — |
+| GET | `/api/ventas/:id` | Sí | — |
+| POST | `/api/ventas` | Sí | — |
+| PUT | `/api/ventas/:id` | Sí | — |
+| DELETE | `/api/ventas/:id` | Sí | — |
+| POST | `/api/ventas/:id/contabilizar` | Sí | — |
+
+### Retenciones
+| Método | Ruta | Auth | Permiso |
+|---|---|---|---|
+| GET | `/api/retenciones` | Sí | — |
+| GET | `/api/retenciones/:id` | Sí | — |
+| POST | `/api/retenciones` | Sí | — |
+| PUT | `/api/retenciones/:id` | Sí | — |
+| DELETE | `/api/retenciones/:id` | Sí | — |
+| POST | `/api/retenciones/:id/contabilizar` | Sí | — |
 
 ### Reportes
 | Método | Ruta | Auth | Permiso |
@@ -701,6 +822,27 @@ MINI/
 
 ---
 
+## Notas Técnicas Importantes
+
+### Sequelize y PlanCuenta
+Sequelize singulariza `PlanCuenta` como `PlanCuentum` (estilo latín). Al hacer `include` de `PlanCuenta` en queries, los datos asociados se acceden como `detalle.PlanCuentum`, no `detalle.PlanCuenta`. Esto aplica en `reporte.controller.js` para Libro Diario y Libro Mayor.
+
+### Seed Idempotente
+El seed base (`seed.js`) usa `findOrCreate` para todos los registros, permitiendo ejecución segura al reiniciar el servidor sin errores de duplicados. El seed de Zapatería (`seedZapateria.js`) verifica existencia de gestión 2025 antes de ejecutar.
+
+### SQLite y ALTER TABLE
+SQLite no soporta `ALTER TABLE ADD COLUMN` automáticamente con Sequelize `sync()`. Si se agregan campos nuevos a un modelo existente, ejecutar manualmente:
+```sql
+ALTER TABLE tabla ADD COLUMN nombre tipo;
+```
+
+### Despliegue en Producción
+- `NODE_ENV=production` en `.env` activa el serving de archivos estáticos desde `client/dist/`
+- El frontend debe construirse primero con `npm run build`
+- Un solo proceso Node.js sirve tanto API como SPA
+
+---
+
 ## Resumen de Progreso
 
 | Fase | Descripción | Estado | Archivos |
@@ -709,7 +851,8 @@ MINI/
 | **F2** | Core: Plan Cuentas, Comprobantes | ✅ Completa | 6 controllers, 4 routes, 3 páginas |
 | **F3** | Reportes: 6 reportes contables | ✅ Completa | 1 controller, 1 route, 6 páginas |
 | **F4** | Exportación PDF y Excel | ✅ Completa | 1 controller, 1 route, 6 páginas actualizadas |
-| **F5** | Pulido UX | 🔄 En progreso | ConfirmModal, toasts, búsqueda, paginación |
+| **F5** | Pulido UX + Compras/Ventas/Retenciones | ✅ Completa | 3 controllers, 3 routes, 3 páginas, seed reescrito |
 
-**Total de líneas de código estimadas:** ~10,000+ líneas
-**Total de archivos creados:** ~55 archivos
+**Total de líneas de código estimadas:** ~15,000+ líneas
+**Total de archivos creados:** ~70 archivos
+**Datos seed:** Zapatería Elegante SRL — 80 cuentas, 18 compras, 28 ventas, 84 comprobantes, 2 gestiones fiscales
