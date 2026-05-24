@@ -50,18 +50,6 @@ app.use('/api/ventas', ventaRoutes);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
-
-// Servir frontend estático en producción
-if (process.env.NODE_ENV === 'production') {
-  const path = require('path');
-  const clientDist = path.join(__dirname, '../../client/dist');
-  app.use(express.static(clientDist));
-
-  app.get('/{*path}', (req, res) => {
-    res.sendFile(path.join(clientDist, 'index.html'));
-  });
-}
-
 app.use(errorHandler);
 
 async function start() {
