@@ -1,0 +1,96 @@
+uid=7_0 RootWebArea "client" url="http://localhost:5173/plan-cuentas"
+  uid=7_1 complementary
+    uid=7_2 heading "EICAP MINI" level="1"
+    uid=7_3 StaticText "Sistema Contable"
+    uid=7_4 StaticText "Administrador"
+    uid=7_5 StaticText "Admin"
+    uid=7_6 navigation
+      uid=7_7 link "Dashboard" url="http://localhost:5173/"
+        uid=7_8 StaticText "Dashboard"
+      uid=7_9 link "Plan de Cuentas" url="http://localhost:5173/plan-cuentas"
+        uid=7_10 StaticText "Plan de Cuentas"
+      uid=7_11 link "Comprobantes" url="http://localhost:5173/comprobantes"
+        uid=7_12 StaticText "Comprobantes"
+      uid=7_13 link "Retenciones" url="http://localhost:5173/retenciones"
+        uid=7_14 StaticText "Retenciones"
+      uid=7_15 link "Compras" url="http://localhost:5173/compras"
+        uid=7_16 StaticText "Compras"
+      uid=7_17 link "Ventas" url="http://localhost:5173/ventas"
+        uid=7_18 StaticText "Ventas"
+      uid=7_19 link "Clientes/Prov." url="http://localhost:5173/clientes-proveedores"
+        uid=7_20 StaticText "Clientes/Prov."
+      uid=7_21 link "Inventario" url="http://localhost:5173/inventario"
+        uid=7_22 StaticText "Inventario"
+      uid=7_23 link "Libro Diario" url="http://localhost:5173/libro-diario"
+        uid=7_24 StaticText "Libro Diario"
+      uid=7_25 link "Libro Mayor" url="http://localhost:5173/libro-mayor"
+        uid=7_26 StaticText "Libro Mayor"
+      uid=7_27 link "Balance General" url="http://localhost:5173/balance-general"
+        uid=7_28 StaticText "Balance General"
+      uid=7_29 link "Estado Resultados" url="http://localhost:5173/estado-resultados"
+        uid=7_30 StaticText "Estado Resultados"
+      uid=7_31 link "Evol. Patrimonio" url="http://localhost:5173/evolucion-patrimonio"
+        uid=7_32 StaticText "Evol. Patrimonio"
+      uid=7_33 link "Sumas y Saldos" url="http://localhost:5173/sumas-saldos"
+        uid=7_34 StaticText "Sumas y Saldos"
+      uid=7_35 link "Flujo Efectivo" url="http://localhost:5173/flujo-efectivo"
+        uid=7_36 StaticText "Flujo Efectivo"
+      uid=7_37 link "Configuración" url="http://localhost:5173/configuracion"
+        uid=7_38 StaticText "Configuración"
+      uid=7_39 link "Usuarios" url="http://localhost:5173/usuarios"
+        uid=7_40 StaticText "Usuarios"
+      uid=7_41 link "Roles" url="http://localhost:5173/roles"
+        uid=7_42 StaticText "Roles"
+    uid=7_43 button "Cerrar Sesión"
+  uid=7_44 banner
+    uid=7_45 combobox expandable haspopup="menu" value="CENTRO DE DISTRIBUCIÓN ORURO"
+      uid=7_46 option "Mi Empresa Académica" selectable value="Mi Empresa Académica"
+      uid=7_47 option "CENTRO DE DISTRIBUCIÓN ORURO" selectable selected value="CENTRO DE DISTRIBUCIÓN ORURO"
+      uid=7_48 option "ENALBO S.A." selectable value="ENALBO S.A."
+    uid=7_49 StaticText "28 de mayo de 2026"
+    uid=7_50 button "Comprobantes sin contabilizar"
+    uid=7_51 StaticText "Administrador"
+  uid=7_52 main
+    uid=7_53 heading "Plan de Cuentas" level="1"
+    uid=7_54 StaticText "170 cuentas registradas"
+    uid=7_55 button "Importar Excel"
+    uid=7_56 button "Nueva Cuenta"
+    uid=7_57 textbox "Buscar por código o nombre..."
+    uid=7_58 StaticText "Estructura de Cuentas"
+    uid=7_59 StaticText "Activo"
+    uid=7_60 StaticText "Pasivo"
+    uid=7_61 StaticText "Patrimonio"
+    uid=7_62 StaticText "Ingreso"
+    uid=7_63 StaticText "Gasto"
+    uid=7_64 StaticText "Orden"
+    uid=7_65 StaticText "Contingentes"
+    uid=7_66 button
+    uid=7_67 StaticText "1000000000"
+    uid=7_68 StaticText "ACTIVO"
+    uid=7_69 StaticText "Activo"
+    uid=7_70 button
+    uid=7_71 button
+    uid=7_72 button
+    uid=7_73 StaticText "2000000000"
+    uid=7_74 StaticText "PASIVO"
+    uid=7_75 StaticText "Pasivo"
+    uid=7_76 button
+    uid=7_77 button
+    uid=7_78 button
+    uid=7_79 StaticText "3000000000"
+    uid=7_80 StaticText "PATRIMONIO"
+    uid=7_81 StaticText "Activo"
+    uid=7_82 button
+    uid=7_83 button
+    uid=7_84 button
+    uid=7_85 StaticText "5000000000"
+    uid=7_86 StaticText "GASTOS"
+    uid=7_87 StaticText "Gasto"
+    uid=7_88 button
+    uid=7_89 button
+    uid=7_90 button
+    uid=7_91 StaticText "5020302000"
+    uid=7_92 StaticText "OTROS GASTOS ADMINISTRATIVOS"
+    uid=7_93 StaticText "Gasto"
+    uid=7_94 button
+    uid=7_95 button

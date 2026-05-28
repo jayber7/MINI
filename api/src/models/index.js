@@ -14,6 +14,9 @@ const Cotizacion = require('./Cotizacion');
 const Retencion = require('./Retencion');
 const Compra = require('./Compra');
 const Venta = require('./Venta');
+const ClienteProveedor = require('./ClienteProveedor');
+const Producto = require('./Producto');
+const MovimientoInventario = require('./MovimientoInventario');
 
 // Roles y Permisos (muchos a muchos)
 Rol.belongsToMany(Permiso, { through: RolPermiso, foreignKey: 'rolId' });
@@ -91,6 +94,26 @@ Compra.belongsTo(Comprobante, { foreignKey: 'comprobanteId' });
 Comprobante.hasMany(Venta, { foreignKey: 'comprobanteId' });
 Venta.belongsTo(Comprobante, { foreignKey: 'comprobanteId' });
 
+// ClienteProveedor
+Empresa.hasMany(ClienteProveedor, { foreignKey: 'empresaId' });
+ClienteProveedor.belongsTo(Empresa, { foreignKey: 'empresaId' });
+Comprobante.belongsTo(ClienteProveedor, { foreignKey: 'clienteProveedorId' });
+ClienteProveedor.hasMany(Comprobante, { foreignKey: 'clienteProveedorId' });
+
+// Vendedor (Usuario como vendedor en Comprobante)
+Usuario.hasMany(Comprobante, { as: 'comprobantesVendidos', foreignKey: 'vendedorId' });
+Comprobante.belongsTo(Usuario, { as: 'vendedor', foreignKey: 'vendedorId' });
+
+// Productos
+Empresa.hasMany(Producto, { foreignKey: 'empresaId' });
+Producto.belongsTo(Empresa, { foreignKey: 'empresaId' });
+
+// Movimientos de Inventario
+Producto.hasMany(MovimientoInventario, { foreignKey: 'productoId' });
+MovimientoInventario.belongsTo(Producto, { foreignKey: 'productoId' });
+Empresa.hasMany(MovimientoInventario, { foreignKey: 'empresaId' });
+MovimientoInventario.belongsTo(Empresa, { foreignKey: 'empresaId' });
+
 module.exports = {
   sequelize,
   Rol,
@@ -108,4 +131,7 @@ module.exports = {
   Retencion,
   Compra,
   Venta,
+  ClienteProveedor,
+  Producto,
+  MovimientoInventario,
 };

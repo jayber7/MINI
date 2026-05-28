@@ -851,8 +851,28 @@ ALTER TABLE tabla ADD COLUMN nombre tipo;
 | **F2** | Core: Plan Cuentas, Comprobantes | ✅ Completa | 6 controllers, 4 routes, 3 páginas |
 | **F3** | Reportes: 6 reportes contables | ✅ Completa | 1 controller, 1 route, 6 páginas |
 | **F4** | Exportación PDF y Excel | ✅ Completa | 1 controller, 1 route, 6 páginas actualizadas |
-| **F5** | Pulido UX + Compras/Ventas/Retenciones | ✅ Completa | 3 controllers, 3 routes, 3 páginas, seed reescrito |
+| **F5** | Multi-empresa + Dashboard + Inventario + Clientes/Prov | ✅ Completa | ~120 archivos backend+frontend |
 
-**Total de líneas de código estimadas:** ~15,000+ líneas
-**Total de archivos creados:** ~70 archivos
-**Datos seed:** Zapatería Elegante SRL — 80 cuentas, 18 compras, 28 ventas, 84 comprobantes, 2 gestiones fiscales
+**Total de líneas de código estimadas:** ~25,000+ líneas
+**Total de archivos creados:** ~100+ archivos
+
+### Empresas Disponibles
+1. **Mi Empresa Académica** — Empresa legada (80 cuentas plan de cuentas, datos Zapatería)
+2. **CENTRO DE DISTRIBUCIÓN ORURO** — Distribuidora de bebidas (sin plan de cuentas aún, importar desde Excel)
+3. **ENALBO S.A.** — Fabricante de envases de aluminio (44 cuentas plan de cuentas sembrado, datos de inventario)
+
+### Características Clave Implementadas (Fase Multi-empresa)
+- Modelos: ClienteProveedor, Producto, MovimientoInventario
+- PlanCuenta con `clasificacionFlujo` y unique compuesto `[codigo, empresaId]`
+- Selector de empresa en header (sidebar local storage)
+- Dashboard: 5 KPIs, charts (line+donut), tablas (últimas ventas, resumen financiero, productos más vendidos), alertas
+- Comprobantes: detalle en panel derecho, filtros por tipo documento/estado/pago
+- Balance General con gráfico pastel (Activo/Pasivo/Patrimonio)
+- Estado Resultados en dos columnas (Ingresos/Gastos)
+- Evolución Patrimonio con items específicos
+- Flujo de Efectivo (3 clasificaciones: operación/inversión/financiamiento)
+- CSV import endpoint para clientes/proveedores (`POST /api/clientes-proveedores/importar-csv`)
+- Importar Excel plan de cuentas (`POST /api/plan-cuentas/importar-excel`)
+- Export PDF comprobantes con números de cuenta y tabla con borde
+- Middleware empresa (x-empresa-id header)
+- Dashboard endpoint `GET /api/dashboard`

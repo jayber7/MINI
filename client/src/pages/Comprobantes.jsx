@@ -1,804 +1,610 @@
 import { useState, useEffect } from 'react';
-import api from '../services/api';
-import { Plus, Edit2, Trash2, XCircle, Eye, FileText, AlertCircle, CheckCircle, Calculator } from 'lucide-react';
+import api, { exportarArchivo } from '../services/api';
 import toast from 'react-hot-toast';
+import { Eye, Printer, MoreVertical, CheckCircle, XCircle, Plus, Edit2, Trash2 } from 'lucide-react';
 import ConfirmModal from '../components/ConfirmModal';
+
+const formatBs = (n) => `Bs. ${(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
+
+const docLabels = {
+  factura: 'Fact', nota_credito: 'NC', nota_debito: 'ND', recibo: 'Rec',
+};
+
+const tipoBadge = (tipo) => {
+  const colors = { ingreso: 'bg-green-100 text-green-800', egreso: 'bg-red-100 text-red-800', traspaso: 'bg-blue-100 text-blue-800' };
+  return <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[tipo] || 'bg-gray-100'}`}>{tipo}</span>;
+};
+
+const estadoBadge = (estado) => {
+  const colors = { activo: 'bg-yellow-100 text-yellow-800', contabilizado: 'bg-green-100 text-green-800', anulado: 'bg-red-100 text-red-800' };
+  return <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[estado]}`}>{estado}</span>;
+};
 
 export default function Comprobantes() {
   const [comprobantes, setComprobantes] = useState([]);
-  const [cuentas, setCuentas] = useState([]);
-  const [gestiones, setGestiones] = useState([]);
-  const [cargando, setCargando] = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [selected, setSelected] = useState(null);
+  const [showPanel, setShowPanel] = useState(false);
+  const [kpis, setKpis] = useState(null);
+  const [filtros, setFiltros] = useState({ estado: '', documentoTipo: '', search: '' });
+  const [menuOpen, setMenuOpen] = useState(null);
+  const [confirmAccion, setConfirmAccion] = useState(null);
+
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
   const [editando, setEditando] = useState(null);
-  const [filtros, setFiltros] = useState({ desde: '', hasta: '', tipo: '', estado: '' });
-  const [modalConfirm, setModalConfirm] = useState({ isOpen: false, type: '', id: null });
-  const [busqueda, setBusqueda] = useState('');
-  const [pagina, setPagina] = useState(1);
-  const [calcMenu, setCalcMenu] = useState({ isOpen: false, index: null, x: 0, y: 0 });
-  const porPagina = 10;
-
+  const [cuentas, setCuentas] = useState([]);
+  const [clientes, setClientes] = useState([]);
+  const [usuarios, setUsuarios] = useState([]);
+  const [gestionActual, setGestionActual] = useState(null);
   const [form, setForm] = useState({
-    numero: '',
     tipoComprobante: 'ingreso',
-    glosa: '',
+    documentoTipo: 'factura',
+    documentoNumero: '',
     fecha: new Date().toISOString().split('T')[0],
-    gestionId: '',
+    glosa: '',
+    clienteProveedorId: '',
+    vendedorId: '',
+    subtotal: 0,
+    descuento: 0,
+    iva: 0,
     cheque: '',
-    usd: '',
-    ufv: '',
-    detalles: [{ planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
+    pagado: false,
+    fechaPago: '',
+    lineas: [{ planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
   });
 
-  useEffect(() => {
-    cargarDatos();
-  }, []);
-
-  useEffect(() => {
-    setPagina(1);
-  }, [busqueda]);
-
-  useEffect(() => {
-    const cerrarCalc = () => setCalcMenu({ isOpen: false, index: null, x: 0, y: 0 });
-    if (calcMenu.isOpen) {
-      document.addEventListener('click', cerrarCalc);
-      return () => document.removeEventListener('click', cerrarCalc);
-    }
-  }, [calcMenu.isOpen]);
-
-  const cargarDatos = async () => {
+  const cargar = async () => {
     try {
-      const [compRes, cuentasRes, gestionesRes] = await Promise.all([
-        api.get('/comprobantes'),
-        api.get('/plan-cuentas'),
-        api.get('/gestiones'),
-      ]);
-      setComprobantes(compRes.data.comprobantes || (Array.isArray(compRes.data) ? compRes.data : []));
-      setCuentas(cuentasRes.data);
-      setGestiones(gestionesRes.data);
-
-      if (gestionesRes.data.length > 0) {
-        setForm((prev) => ({ ...prev, gestionId: gestionesRes.data[0].id }));
-      }
-    } catch (error) {
-      console.error('Error cargando datos:', error);
-    } finally {
-      setCargando(false);
-    }
-  };
-
-  const handleFiltrar = async () => {
-    setPagina(1);
-    try {
-      const params = {};
-      if (filtros.desde) params.desde = filtros.desde;
-      if (filtros.hasta) params.hasta = filtros.hasta;
-      if (filtros.tipo) params.tipo = filtros.tipo;
-      if (filtros.estado) params.estado = filtros.estado;
-
+      const params = { page, limit: 10, ...filtros };
+      Object.keys(params).forEach(k => !params[k] && delete params[k]);
       const { data } = await api.get('/comprobantes', { params });
-      setComprobantes(data.comprobantes || (Array.isArray(data) ? data : []));
-    } catch (error) {
-      console.error('Error filtrando:', error);
-    }
+      setComprobantes(data.comprobantes);
+      setTotal(data.total);
+      setPages(data.totalPages);
+    } catch { toast.error('Error al cargar'); }
   };
 
-  const agregarDetalle = () => {
-    setForm((prev) => ({
-      ...prev,
-      detalles: [...prev.detalles, { planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
-    }));
-  };
-
-  const eliminarDetalle = (index) => {
-    if (form.detalles.length <= 2) return;
-    setForm((prev) => ({
-      ...prev,
-      detalles: prev.detalles.filter((_, i) => i !== index),
-    }));
-  };
-
-  const actualizarDetalle = (index, campo, valor) => {
-    setForm((prev) => {
-      const nuevosDetalles = [...prev.detalles];
-      nuevosDetalles[index] = { ...nuevosDetalles[index], [campo]: valor };
-
-      if (campo === 'debe' && parseFloat(valor) > 0) {
-        nuevosDetalles[index].haber = 0;
-      }
-      if (campo === 'haber' && parseFloat(valor) > 0) {
-        nuevosDetalles[index].debe = 0;
-      }
-
-      return { ...prev, detalles: nuevosDetalles };
-    });
-  };
-
-  const calcularTotales = () => {
-    let totalDebe = 0;
-    let totalHaber = 0;
-    form.detalles.forEach((d) => {
-      totalDebe += parseFloat(d.debe) || 0;
-      totalHaber += parseFloat(d.haber) || 0;
-    });
-    return { totalDebe, totalHaber, balanceado: Math.abs(totalDebe - totalHaber) < 0.01 };
-  };
-
-  const abrirCalcMenu = (e, index) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setCalcMenu({ isOpen: true, index, x: e.clientX, y: e.clientY });
-  };
-
-  const aplicarCalculo = (tipo) => {
-    const idx = calcMenu.index;
-    const valor = parseFloat(form.detalles[idx].debe) || parseFloat(form.detalles[idx].haber) || 0;
-    if (valor === 0) {
-      toast.error('Ingrese un valor en la línea antes de calcular');
-      setCalcMenu({ isOpen: false, index: null, x: 0, y: 0 });
-      return;
-    }
-    let resultado;
-    switch (tipo) {
-      case 'neto87': resultado = Math.round(valor * 0.87 * 100) / 100; break;
-      case 'iva13': resultado = Math.round(valor * 0.13 * 100) / 100; break;
-      case 'it3': resultado = Math.round(valor * 0.03 * 100) / 100; break;
-      case 'rciva8': resultado = Math.round(valor * 0.08 * 100) / 100; break;
-      case 'rciva155': resultado = Math.round(valor * 0.155 * 100) / 100; break;
-      default: resultado = valor;
-    }
-    setForm((prev) => {
-      const nuevos = [...prev.detalles];
-      nuevos[idx] = { ...nuevos[idx], debe: resultado, haber: 0 };
-      return { ...prev, detalles: nuevos };
-    });
-    setCalcMenu({ isOpen: false, index: null, x: 0, y: 0 });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-
-    const { balanceado } = calcularTotales();
-    if (!balanceado) {
-      toast.error('El comprobante no está balanceado. La suma del DEBE debe ser igual a la suma del HABER.');
-      return;
-    }
-
-    const detallesValidos = form.detalles.filter((d) => d.planCuentaId && (d.debe > 0 || d.haber > 0));
-    if (detallesValidos.length === 0) {
-      toast.error('El comprobante debe tener al menos una línea con cuenta y monto.');
-      return;
-    }
-
+  const cargarKpis = async () => {
     try {
-      const datos = {
-        ...form,
-        detalles: detallesValidos,
-      };
-
-      if (editando) {
-        await api.put(`/comprobantes/${editando.id}`, datos);
-        toast.success('Comprobante actualizado correctamente');
-      } else {
-        await api.post('/comprobantes', datos);
-        toast.success('Comprobante creado correctamente');
-      }
-      resetForm();
-      cargarDatos();
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Error al guardar comprobante');
-    }
+      const { data } = await api.get('/comprobantes/kpis');
+      setKpis(data);
+    } catch { /* ignore */ }
   };
 
-  const handleEdit = async (comp) => {
+  const cargarReferenciales = async () => {
     try {
-      const { data } = await api.get(`/comprobantes/${comp.id}`);
-      setEditando(data);
-      setForm({
-        numero: data.numero,
-        tipoComprobante: data.tipoComprobante,
-        glosa: data.glosa,
-        fecha: data.fecha,
-        gestionId: data.gestionId,
-        cheque: data.cheque || '',
-        usd: data.usd || '',
-        ufv: data.ufv || '',
-        detalles: data.ComprobanteDetalles.map((d) => ({
-          planCuentaId: d.planCuentaId,
-          glosa: d.glosa || '',
-          debe: parseFloat(d.debe),
-          haber: parseFloat(d.haber),
-        })),
-      });
-      setMostrarFormulario(true);
-    } catch (error) {
-      toast.error('Error al cargar comprobante');
-    }
+      const [cuentasRes, clientesRes, usuariosRes, gestionRes] = await Promise.all([
+        api.get('/plan-cuentas'),
+        api.get('/clientes-proveedores'),
+        api.get('/usuarios'),
+        api.get('/gestiones/actual'),
+      ]);
+      setCuentas(cuentasRes.data.planCuentas || cuentasRes.data || []);
+      setClientes(clientesRes.data.clientesProveedores || clientesRes.data || []);
+      setUsuarios(usuariosRes.data.usuarios || usuariosRes.data || []);
+      setGestionActual(gestionRes.data);
+    } catch { /* ignore */ }
   };
 
-  const handleAnular = (id) => {
-    setModalConfirm({ isOpen: true, type: 'anular', id });
-  };
+  useEffect(() => { cargar(); cargarKpis(); }, [page, filtros]);
 
-  const handleDelete = (id) => {
-    setModalConfirm({ isOpen: true, type: 'eliminar', id });
-  };
-
-  const handleContabilizar = (id) => {
-    setModalConfirm({ isOpen: true, type: 'contabilizar', id });
-  };
-
-  const handleExportarPdf = async (id) => {
+  const verDetalle = async (id) => {
     try {
-      const res = await api.get(`/export/comprobante/${id}/pdf`, { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `comprobante_${id}.pdf`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.URL.revokeObjectURL(url);
-    } catch (error) {
-      toast.error('Error al exportar PDF');
-    }
+      const { data } = await api.get(`/comprobantes/${id}`);
+      setSelected(data);
+      setShowPanel(true);
+    } catch { toast.error('Error al cargar detalle'); }
   };
 
-  const handleConfirmAction = async () => {
-    const { type, id } = modalConfirm;
+  const accion = async (tipo, id) => {
     try {
-      if (type === 'anular') {
+      if (tipo === 'anular') {
         await api.post(`/comprobantes/${id}/anular`);
-        toast.success('Comprobante anulado correctamente');
-      } else if (type === 'eliminar') {
-        await api.delete(`/comprobantes/${id}`);
-        toast.success('Comprobante eliminado correctamente');
-      } else if (type === 'contabilizar') {
+        toast.success('Anulado');
+      } else if (tipo === 'contabilizar') {
         await api.post(`/comprobantes/${id}/contabilizar`);
-        toast.success('Comprobante contabilizado correctamente');
+        toast.success('Contabilizado');
+      } else if (tipo === 'eliminar') {
+        await api.delete(`/comprobantes/${id}`);
+        toast.success('Eliminado');
+      } else if (tipo === 'pagado') {
+        await api.post(`/comprobantes/${id}/marcar-pagado`, { pagado: true });
+        toast.success('Marcado como pagado');
+      } else if (tipo === 'pendiente') {
+        await api.post(`/comprobantes/${id}/marcar-pagado`, { pagado: false });
+        toast.success('Marcado como pendiente');
       }
-      cargarDatos();
-    } catch (error) {
-      toast.error(error.response?.data?.error || `Error al ${type === 'anular' ? 'anular' : type === 'contabilizar' ? 'contabilizar' : 'eliminar'} comprobante`);
+      setConfirmAccion(null);
+      setMenuOpen(null);
+      if (selected?.id === id) setShowPanel(false);
+      cargar();
+      cargarKpis();
+    } catch { toast.error('Error en la operación'); }
+  };
+
+  const abrirFormulario = (c = null) => {
+    setEditando(c);
+    if (c) {
+      setForm({
+        tipoComprobante: c.tipoComprobante || 'ingreso',
+        documentoTipo: c.documentoTipo || 'factura',
+        documentoNumero: c.documentoNumero || '',
+        fecha: c.fecha || new Date().toISOString().split('T')[0],
+        glosa: c.glosa || '',
+        clienteProveedorId: c.clienteProveedorId || '',
+        vendedorId: c.vendedorId || '',
+        subtotal: c.subtotal || 0,
+        descuento: c.descuento || 0,
+        iva: c.iva || 0,
+        cheque: c.cheque || '',
+        pagado: c.pagado || false,
+        fechaPago: c.fechaPago || '',
+        lineas: c.ComprobanteDetalles?.map(d => ({
+          id: d.id,
+          planCuentaId: d.planCuentaId || '',
+          glosa: d.glosa || '',
+          debe: d.debe || 0,
+          haber: d.haber || 0,
+        })) || [{ planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
+      });
+    } else {
+      resetForm();
     }
+    setMostrarFormulario(true);
+    cargarReferenciales();
   };
 
   const resetForm = () => {
     setForm({
-      numero: '',
       tipoComprobante: 'ingreso',
-      glosa: '',
+      documentoTipo: 'factura',
+      documentoNumero: '',
       fecha: new Date().toISOString().split('T')[0],
-      gestionId: gestiones[0]?.id || '',
+      glosa: '',
+      clienteProveedorId: '',
+      vendedorId: '',
+      subtotal: 0,
+      descuento: 0,
+      iva: 0,
       cheque: '',
-      usd: '',
-      ufv: '',
-      detalles: [{ planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
+      pagado: false,
+      fechaPago: '',
+      lineas: [{ planCuentaId: '', glosa: '', debe: 0, haber: 0 }],
     });
     setEditando(null);
     setMostrarFormulario(false);
   };
 
-  const totales = calcularTotales();
-
-  const getCuentaNombre = (id) => {
-    const cuenta = cuentas.find((c) => c.id === id);
-    return cuenta ? `${cuenta.codigo} - ${cuenta.nombre}` : '';
+  const addLinea = () => {
+    setForm({ ...form, lineas: [...form.lineas, { planCuentaId: '', glosa: '', debe: 0, haber: 0 }] });
   };
 
-  if (cargando) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
-  }
+  const removeLinea = (idx) => {
+    if (form.lineas.length <= 1) return;
+    setForm({ ...form, lineas: form.lineas.filter((_, i) => i !== idx) });
+  };
+
+  const updateLinea = (idx, field, value) => {
+    const lineas = [...form.lineas];
+    lineas[idx][field] = value;
+    setForm({ ...form, lineas });
+  };
+
+  const totalDebe = form.lineas.reduce((s, l) => s + (parseFloat(l.debe) || 0), 0);
+  const totalHaber = form.lineas.reduce((s, l) => s + (parseFloat(l.haber) || 0), 0);
+  const diferencia = Math.abs(totalDebe - totalHaber);
+  const balanceado = diferencia <= 0.01;
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!form.fecha || !form.glosa) {
+      toast.error('Complete fecha y glosa');
+      return;
+    }
+    if (form.lineas.length === 0 || !form.lineas[0].planCuentaId) {
+      toast.error('Agregue al menos una línea de detalle');
+      return;
+    }
+    if (!balanceado) {
+      toast.error(`El comprobante no está balanceado (diferencia: ${formatBs(diferencia)})`);
+      return;
+    }
+    try {
+      const payload = {
+        ...form,
+        subtotal: parseFloat(form.subtotal) || 0,
+        descuento: parseFloat(form.descuento) || 0,
+        iva: parseFloat(form.iva) || 0,
+        clienteProveedorId: form.clienteProveedorId || null,
+        vendedorId: form.vendedorId || null,
+        pagado: form.pagado,
+        fechaPago: form.pagado ? form.fechaPago || form.fecha : null,
+        detalles: form.lineas.map(l => ({
+          planCuentaId: parseInt(l.planCuentaId),
+          glosa: l.glosa,
+          debe: parseFloat(l.debe) || 0,
+          haber: parseFloat(l.haber) || 0,
+        })),
+      };
+      delete payload.lineas;
+
+      if (editando) {
+        await api.put(`/comprobantes/${editando.id}`, payload);
+        toast.success('Comprobante actualizado');
+      } else {
+        await api.post('/comprobantes', payload);
+        toast.success('Comprobante creado');
+      }
+      resetForm();
+      cargar();
+      cargarKpis();
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Error al guardar');
+    }
+  };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Comprobantes Contables</h1>
-        <button
-          onClick={() => setMostrarFormulario(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Nuevo Comprobante
-        </button>
-      </div>
-
-      {/* Filtros */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-        <div className="flex gap-3 mb-3">
-          <div className="relative flex-1 max-w-md">
-            <input
-              type="text"
-              placeholder="Buscar por Nº, glosa o usuario..."
-              value={busqueda}
-              onChange={(e) => setBusqueda(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-            />
-            <svg className="absolute left-3 top-2.5 w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-            </svg>
-          </div>
+    <div className="flex gap-4">
+      {/* Main content */}
+      <div className={`flex-1 min-w-0 ${showPanel ? 'hidden lg:block' : ''}`}>
+        <div className="flex items-center justify-between mb-4">
+          <h1 className="text-2xl font-bold text-gray-800">Comprobantes</h1>
+          <button onClick={() => abrirFormulario()} className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium">+ Nuevo</button>
         </div>
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          <input
-            type="date"
-            value={filtros.desde}
-            onChange={(e) => setFiltros({ ...filtros, desde: e.target.value })}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            placeholder="Desde"
-          />
-          <input
-            type="date"
-            value={filtros.hasta}
-            onChange={(e) => setFiltros({ ...filtros, hasta: e.target.value })}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-            placeholder="Hasta"
-          />
-          <select
-            value={filtros.tipo}
-            onChange={(e) => setFiltros({ ...filtros, tipo: e.target.value })}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value="">Todos los tipos</option>
-            <option value="ingreso">Ingreso</option>
-            <option value="egreso">Egreso</option>
-            <option value="traspaso">Traspaso</option>
+
+        {/* KPIs */}
+        {kpis && (
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+              <p className="text-xs text-gray-500">Total</p>
+              <p className="text-xl font-bold">{kpis.total}</p>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+              <p className="text-xs text-gray-500">Pagados</p>
+              <p className="text-xl font-bold text-green-600">{kpis.pagados}</p>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+              <p className="text-xs text-gray-500">Pendientes</p>
+              <p className="text-xl font-bold text-amber-600">{kpis.pendientes}</p>
+            </div>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-3">
+              <p className="text-xs text-gray-500">Total Bs.</p>
+              <p className="text-xl font-bold">{formatBs(kpis.totalMonto)}</p>
+            </div>
+          </div>
+        )}
+
+        {/* Filtros */}
+        <div className="flex gap-2 mb-4 flex-wrap">
+          <input type="text" placeholder="Buscar Nº, glosa..." value={filtros.search} onChange={e => { setFiltros({ ...filtros, search: e.target.value }); setPage(1); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm flex-1 min-w-[200px]" />
+          <select value={filtros.documentoTipo} onChange={e => { setFiltros({ ...filtros, documentoTipo: e.target.value }); setPage(1); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todo tipo</option>
+            <option value="factura">Factura</option>
+            <option value="nota_credito">Nota Crédito</option>
+            <option value="nota_debito">Nota Débito</option>
+            <option value="recibo">Recibo</option>
           </select>
-          <select
-            value={filtros.estado}
-            onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
-            className="px-3 py-2 border border-gray-300 rounded-lg text-sm"
-          >
-            <option value="">Todos los estados</option>
+          <select value={filtros.estado} onChange={e => { setFiltros({ ...filtros, estado: e.target.value }); setPage(1); }} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todo estado</option>
             <option value="activo">Activo</option>
             <option value="contabilizado">Contabilizado</option>
             <option value="anulado">Anulado</option>
           </select>
-          <button
-            onClick={handleFiltrar}
-            className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-200 transition text-sm"
-          >
-            Filtrar
-          </button>
         </div>
-      </div>
 
-      {/* Formulario */}
-      {mostrarFormulario && (
-        <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-100">
-          <h2 className="text-lg font-semibold mb-4">
-            {editando ? 'Editar Comprobante' : 'Nuevo Comprobante'}
-          </h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
-                <select
-                  value={form.tipoComprobante}
-                  onChange={(e) => setForm({ ...form, tipoComprobante: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  required
-                >
-                  <option value="ingreso">Ingreso</option>
-                  <option value="egreso">Egreso</option>
-                  <option value="traspaso">Traspaso</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
-                <input
-                  type="date"
-                  value={form.fecha}
-                  onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  required
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Gestión</label>
-                <select
-                  value={form.gestionId}
-                  onChange={(e) => setForm({ ...form, gestionId: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                >
-                  {gestiones.map((g) => (
-                    <option key={g.id} value={g.id}>{g.year} - {g.glosa}</option>
-                  ))}
-                </select>
+        {/* Formulario */}
+        {mostrarFormulario && (
+          <div className="bg-white rounded-xl shadow-sm p-6 border border-gray-200 mb-6">
+            <h2 className="text-lg font-semibold mb-4">{editando ? 'Editar Comprobante' : 'Nuevo Comprobante'}</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Comprobante</label>
+                  <select value={form.tipoComprobante} onChange={e => setForm({ ...form, tipoComprobante: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="ingreso">Ingreso</option>
+                    <option value="egreso">Egreso</option>
+                    <option value="traspaso">Traspaso</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Tipo Documento</label>
+                  <select value={form.documentoTipo} onChange={e => setForm({ ...form, documentoTipo: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="factura">Factura</option>
+                    <option value="nota_credito">Nota Crédito</option>
+                    <option value="nota_debito">Nota Débito</option>
+                    <option value="recibo">Recibo</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Nº Documento</label>
+                  <input type="text" value={form.documentoNumero} onChange={e => setForm({ ...form, documentoNumero: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Fecha</label>
+                  <input type="date" value={form.fecha} onChange={e => setForm({ ...form, fecha: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" required />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Glosa</label>
-                <input
-                  type="text"
-                  value={form.glosa}
-                  onChange={(e) => setForm({ ...form, glosa: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="Descripción del comprobante"
-                  required
-                />
+                <input type="text" value={form.glosa} onChange={e => setForm({ ...form, glosa: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Descripción del comprobante" required />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cliente / Proveedor</label>
+                  <select value={form.clienteProveedorId} onChange={e => setForm({ ...form, clienteProveedorId: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- Seleccionar --</option>
+                    {clientes.map(cl => (
+                      <option key={cl.id} value={cl.id}>{cl.razonSocial}{cl.nit ? ` (${cl.nit})` : ''}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Vendedor</label>
+                  <select value={form.vendedorId} onChange={e => setForm({ ...form, vendedorId: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg">
+                    <option value="">-- Seleccionar --</option>
+                    {usuarios.map(u => (
+                      <option key={u.id} value={u.id}>{u.nombreCompleto || u.username}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Cheque</label>
+                  <input type="text" value={form.cheque} onChange={e => setForm({ ...form, cheque: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" placeholder="Nº cheque" />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Subtotal</label>
+                  <input type="number" step="0.01" value={form.subtotal} onChange={e => setForm({ ...form, subtotal: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Descuento</label>
+                  <input type="number" step="0.01" value={form.descuento} onChange={e => setForm({ ...form, descuento: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">IVA</label>
+                  <input type="number" step="0.01" value={form.iva} onChange={e => setForm({ ...form, iva: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg" />
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input type="checkbox" checked={form.pagado} onChange={e => setForm({ ...form, pagado: e.target.checked })} className="rounded border-gray-300" />
+                  <span className="text-sm font-medium text-gray-700">Pagado</span>
+                </label>
+                {form.pagado && (
+                  <div className="flex-1 max-w-xs">
+                    <input type="date" value={form.fechaPago} onChange={e => setForm({ ...form, fechaPago: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                  </div>
+                )}
+              </div>
+
+              {/* Líneas contables */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-semibold text-gray-700">Líneas Contables</h3>
+                  <button type="button" onClick={addLinea} className="flex items-center gap-1 text-indigo-600 text-sm font-medium hover:text-indigo-800"><Plus className="w-4 h-4" /> Agregar línea</button>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-gray-50 border-b">
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Cuenta</th>
+                        <th className="text-left px-3 py-2 text-xs font-semibold text-gray-500">Glosa</th>
+                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Debe</th>
+                        <th className="text-right px-3 py-2 text-xs font-semibold text-gray-500">Haber</th>
+                        <th className="text-center px-3 py-2 text-xs font-semibold text-gray-500"></th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100">
+                      {form.lineas.map((l, i) => (
+                        <tr key={i}>
+                          <td className="px-3 py-1.5">
+                            <select value={l.planCuentaId} onChange={e => updateLinea(i, 'planCuentaId', e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm">
+                              <option value="">-- Cuenta --</option>
+                              {cuentas.map(c => (
+                                <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <input type="text" value={l.glosa} onChange={e => updateLinea(i, 'glosa', e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm" placeholder="Glosa línea" />
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <input type="number" step="0.01" value={l.debe} onChange={e => updateLinea(i, 'debe', e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm text-right" />
+                          </td>
+                          <td className="px-3 py-1.5">
+                            <input type="number" step="0.01" value={l.haber} onChange={e => updateLinea(i, 'haber', e.target.value)} className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm text-right" />
+                          </td>
+                          <td className="px-3 py-1.5 text-center">
+                            <button type="button" onClick={() => removeLinea(i)} disabled={form.lineas.length <= 1} className="p-1 text-red-500 hover:text-red-700 disabled:opacity-30"><Trash2 className="w-4 h-4" /></button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {/* Balance indicator */}
+                <div className={`mt-3 p-3 rounded-lg flex gap-6 text-sm ${balanceado ? 'bg-green-50' : 'bg-red-50'}`}>
+                  <div><span className="text-gray-500">Total Debe:</span> <span className="font-bold">{formatBs(totalDebe)}</span></div>
+                  <div><span className="text-gray-500">Total Haber:</span> <span className="font-bold">{formatBs(totalHaber)}</span></div>
+                  <div><span className="text-gray-500">Diferencia:</span> <span className={`font-bold ${balanceado ? 'text-green-600' : 'text-red-600'}`}>{formatBs(diferencia)}</span></div>
+                  <div className="font-bold">{balanceado ? '✅ Balanceado' : '❌ No balanceado'}</div>
+                </div>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="submit" className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition text-sm font-medium">{editando ? 'Actualizar' : 'Guardar'}</button>
+                <button type="button" onClick={resetForm} className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition text-sm">Cancelar</button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* Tabla */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b">
+              <tr>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Fecha</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Tipo Doc.</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Nº</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Cliente/Proveedor</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Total Bs.</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Estado</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Pago</th>
+                <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {comprobantes.map(c => (
+                <tr key={c.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => verDetalle(c.id)}>
+                  <td className="px-4 py-3 text-sm">{c.fecha}</td>
+                  <td className="px-4 py-3 text-sm font-medium">
+                    {c.documentoTipo ? `${docLabels[c.documentoTipo] || c.documentoTipo}-${String(c.numero).padStart(4, '0')}` : `C-${String(c.numero).padStart(4, '0')}`}
+                  </td>
+                  <td className="px-4 py-3 text-sm font-mono">{c.numero}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{c.ClienteProveedor?.razonSocial || '-'}</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono">{formatBs(0)}</td>
+                  <td className="px-4 py-3 text-center">{estadoBadge(c.estado)}</td>
+                  <td className="px-4 py-3 text-center">
+                    {c.pagado
+                      ? <span className="text-green-600 text-xs font-medium">Pagado</span>
+                      : <span className="text-amber-600 text-xs font-medium">Pendiente</span>}
+                  </td>
+                  <td className="px-4 py-3 text-center" onClick={e => e.stopPropagation()}>
+                    <div className="flex items-center justify-center gap-1">
+                      <button onClick={() => verDetalle(c.id)} className="p-1 hover:bg-gray-100 rounded" title="Ver"><Eye className="w-4 h-4 text-gray-600" /></button>
+                      {c.estado === 'activo' && (
+                        <button onClick={() => abrirFormulario(c)} className="p-1 hover:bg-gray-100 rounded" title="Editar"><Edit2 className="w-4 h-4 text-gray-600" /></button>
+                      )}
+                      <button onClick={() => exportarArchivo(`/export/comprobante/${c.id}/pdf`, `comprobante_${c.numero}.pdf`)} className="p-1 hover:bg-gray-100 rounded" title="Imprimir"><Printer className="w-4 h-4 text-gray-600" /></button>
+                      <div className="relative">
+                        <button onClick={() => setMenuOpen(menuOpen === c.id ? null : c.id)} className="p-1 hover:bg-gray-100 rounded"><MoreVertical className="w-4 h-4 text-gray-600" /></button>
+                        {menuOpen === c.id && (
+                          <div className="absolute right-0 top-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-10 w-44 py-1">
+                            {c.estado === 'activo' && <>
+                              <button onClick={() => { setMenuOpen(null); setConfirmAccion({ tipo: 'contabilizar', id: c.id }); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">Contabilizar</button>
+                              <button onClick={() => { setMenuOpen(null); setConfirmAccion({ tipo: 'anular', id: c.id }); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 text-red-600">Anular</button>
+                              <button onClick={() => { setMenuOpen(null); setConfirmAccion({ tipo: 'eliminar', id: c.id }); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 text-red-600">Eliminar</button>
+                            </>}
+                            {c.pagado
+                              ? <button onClick={() => { setMenuOpen(null); setConfirmAccion({ tipo: 'pendiente', id: c.id }); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">Marcar Pendiente</button>
+                              : <button onClick={() => { setMenuOpen(null); setConfirmAccion({ tipo: 'pagado', id: c.id }); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50">Marcar Pagado</button>}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Paginación */}
+          {pages > 1 && (
+            <div className="px-4 py-3 border-t flex items-center justify-between">
+              <span className="text-sm text-gray-500">{total} comprobantes</span>
+              <div className="flex gap-1">
+                <button disabled={page <= 1} onClick={() => setPage(page - 1)} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Anterior</button>
+                <span className="px-3 py-1 text-sm">{page} / {pages}</span>
+                <button disabled={page >= pages} onClick={() => setPage(page + 1)} className="px-3 py-1 border rounded text-sm disabled:opacity-50">Siguiente</button>
               </div>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nº Cheque</label>
-                <input
-                  type="text"
-                  value={form.cheque}
-                  onChange={(e) => setForm({ ...form, cheque: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="Opcional"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tasa USD</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={form.usd}
-                  onChange={(e) => setForm({ ...form, usd: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="Ej: 6.96"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Tasa UFV</label>
-                <input
-                  type="number"
-                  step="0.0001"
-                  value={form.ufv}
-                  onChange={(e) => setForm({ ...form, ufv: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg"
-                  placeholder="Ej: 3.2145"
-                />
-              </div>
+          )}
+        </div>
+      </div>
+
+      {/* Right Panel */}
+      {showPanel && selected && (
+        <div className="w-full lg:w-[400px] bg-white rounded-xl shadow-sm border border-gray-200 overflow-y-auto max-h-[calc(100vh-120px)] sticky top-4">
+          <div className="px-4 py-3 border-b flex items-center justify-between bg-gray-50">
+            <span className="font-bold text-sm">Detalle</span>
+            <button onClick={() => setShowPanel(false)} className="text-gray-400 hover:text-gray-600 text-lg">&times;</button>
+          </div>
+
+          <div className="p-4 space-y-3">
+            <div className="flex justify-between">
+              <span className="text-sm font-bold">
+                {selected.documentoTipo
+                  ? `${docLabels[selected.documentoTipo] || ''}-${String(selected.numero).padStart(4, '0')}`
+                  : `C-${String(selected.numero).padStart(4, '0')}`}
+              </span>
+              {estadoBadge(selected.estado)}
             </div>
 
-            {/* Detalles */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-sm font-medium text-gray-700">Líneas del Comprobante</label>
-                <button
-                  type="button"
-                  onClick={agregarDetalle}
-                  className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
-                >
-                  + Agregar línea
-                </button>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between"><span className="text-gray-500">Fecha Emisión</span><span>{selected.fecha}</span></div>
+              {selected.ClienteProveedor && (
+                <>
+                  <div className="flex justify-between"><span className="text-gray-500">Cliente</span><span>{selected.ClienteProveedor.razonSocial}</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">NIT</span><span>{selected.ClienteProveedor.nit}</span></div>
+                </>
+              )}
+              <div className="flex justify-between"><span className="text-gray-500">Tipo Contable</span>{tipoBadge(selected.tipoComprobante)}</div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Estado Pago</span>
+                {selected.pagado
+                  ? <span className="text-green-600 font-medium">Pagado {selected.fechaPago ? `(${selected.fechaPago})` : ''}</span>
+                  : <span className="text-amber-600 font-medium">Pendiente</span>}
               </div>
-              <div className="space-y-2">
-                {form.detalles.map((detalle, index) => (
-                  <div key={index} className="grid grid-cols-12 gap-2 items-end">
-                    <div className="col-span-4">
-                      <label className="text-xs text-gray-500">Cuenta</label>
-                      <select
-                        value={detalle.planCuentaId}
-                        onChange={(e) => actualizarDetalle(index, 'planCuentaId', parseInt(e.target.value))}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        required
-                      >
-                        <option value="">Seleccionar cuenta</option>
-                        {cuentas.map((c) => (
-                          <option key={c.id} value={c.id}>{c.codigo} - {c.nombre}</option>
-                        ))}
-                      </select>
+              {selected.vendedor && <div className="flex justify-between"><span className="text-gray-500">Vendedor</span><span>{selected.vendedor.nombreCompleto}</span></div>}
+              {selected.cheque && <div className="flex justify-between"><span className="text-gray-500">Cheque</span><span>{selected.cheque}</span></div>}
+            </div>
+
+            {selected.glosa && (
+              <div className="bg-gray-50 rounded-lg p-3">
+                <p className="text-xs text-gray-500 mb-1">Glosa</p>
+                <p className="text-sm">{selected.glosa}</p>
+              </div>
+            )}
+
+            {(selected.subtotal || selected.descuento || selected.iva) && (
+              <div className="space-y-1 text-sm">
+                {selected.subtotal && <div className="flex justify-between"><span>Subtotal</span><span>{formatBs(selected.subtotal)}</span></div>}
+                {selected.descuento > 0 && <div className="flex justify-between"><span>Descuento</span><span>-{formatBs(selected.descuento)}</span></div>}
+                {selected.iva && <div className="flex justify-between"><span>IVA</span><span>{formatBs(selected.iva)}</span></div>}
+              </div>
+            )}
+
+            <div className="border-t pt-3">
+              <p className="text-xs text-gray-500 mb-2 font-semibold uppercase">Líneas Contables</p>
+              <div className="space-y-1">
+                {selected.ComprobanteDetalles?.map(d => (
+                  <div key={d.id} className="flex justify-between text-sm py-1 border-b border-gray-100 last:border-0">
+                    <div>
+                      <span className="font-mono text-xs text-gray-500">{d.PlanCuentum?.codigo}</span>
+                      <span className="ml-1">{d.PlanCuentum?.nombre}</span>
                     </div>
-                    <div className="col-span-3">
-                      <label className="text-xs text-gray-500">Glosa</label>
-                      <input
-                        type="text"
-                        value={detalle.glosa}
-                        onChange={(e) => actualizarDetalle(index, 'glosa', e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        placeholder="Detalle"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-500">Debe</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={detalle.debe || ''}
-                        onChange={(e) => actualizarDetalle(index, 'debe', e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="text-xs text-gray-500">Haber</label>
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={detalle.haber || ''}
-                        onChange={(e) => actualizarDetalle(index, 'haber', e.target.value)}
-                        className="w-full px-2 py-1.5 border border-gray-300 rounded text-sm"
-                        placeholder="0.00"
-                      />
-                    </div>
-                    <div className="col-span-1 flex items-center gap-1">
-                      <button
-                        type="button"
-                        onClick={(e) => abrirCalcMenu(e, index)}
-                        className="p-1.5 text-gray-400 hover:text-indigo-600 transition"
-                        title="Cálculos rápidos"
-                      >
-                        <Calculator className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => eliminarDetalle(index)}
-                        className="p-1.5 text-gray-400 hover:text-red-600 transition"
-                        disabled={form.detalles.length <= 2}
-                      >
-                        <XCircle className="w-4 h-4" />
-                      </button>
+                    <div className="flex gap-3">
+                      {d.debe > 0 && <span className="text-gray-800 font-medium">Bs. {d.debe.toFixed(2)}</span>}
+                      {d.haber > 0 && <span className="text-gray-800 font-medium">Bs. {d.haber.toFixed(2)}</span>}
                     </div>
                   </div>
                 ))}
               </div>
-
-              {/* Totales */}
-              <div className="mt-4 p-3 bg-gray-50 rounded-lg flex items-center justify-between">
-                <div className="flex gap-6">
-                  <div>
-                    <span className="text-xs text-gray-500">Total DEBE</span>
-                    <p className="text-lg font-bold text-green-600">
-                      Bs. {totales.totalDebe.toFixed(2)}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-xs text-gray-500">Total HABER</span>
-                    <p className="text-lg font-bold text-blue-600">
-                      Bs. {totales.totalHaber.toFixed(2)}
-                    </p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {totales.balanceado ? (
-                    <>
-                      <CheckCircle className="w-5 h-5 text-green-500" />
-                      <span className="text-sm font-medium text-green-600">Balanceado</span>
-                    </>
-                  ) : (
-                    <>
-                      <AlertCircle className="w-5 h-5 text-red-500" />
-                      <span className="text-sm font-medium text-red-600">
-                        Diferencia: Bs. {Math.abs(totales.totalDebe - totales.totalHaber).toFixed(2)}
-                      </span>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Menú de cálculos rápidos */}
-              {calcMenu.isOpen && (
-                <div
-                  className="fixed z-50 bg-white rounded-lg shadow-xl border border-gray-200 py-1 w-52"
-                  style={{ top: calcMenu.y - 10, left: calcMenu.x - 100 }}
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="px-3 py-1.5 text-xs font-semibold text-gray-500 border-b border-gray-100">
-                    Cálculos Rápidos
-                  </div>
-                  <button type="button" onClick={() => aplicarCalculo('neto87')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
-                    <span>Neto 87%</span><span className="text-gray-400 font-mono">sin IVA</span>
-                  </button>
-                  <button type="button" onClick={() => aplicarCalculo('iva13')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
-                    <span>IVA 13%</span><span className="text-gray-400 font-mono">× 0.13</span>
-                  </button>
-                  <button type="button" onClick={() => aplicarCalculo('it3')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
-                    <span>IT 3%</span><span className="text-gray-400 font-mono">× 0.03</span>
-                  </button>
-                  <button type="button" onClick={() => aplicarCalculo('rciva8')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
-                    <span>RC-IVA 8%</span><span className="text-gray-400 font-mono">× 0.08</span>
-                  </button>
-                  <button type="button" onClick={() => aplicarCalculo('rciva155')} className="w-full text-left px-3 py-2 text-sm hover:bg-indigo-50 flex justify-between">
-                    <span>RC-IVA 15.5%</span><span className="text-gray-400 font-mono">× 0.155</span>
-                  </button>
-                </div>
-              )}
             </div>
 
-            <div className="flex gap-3">
-              <button
-                type="submit"
-                className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition"
-              >
-                {editando ? 'Actualizar' : 'Guardar Comprobante'}
-              </button>
-              <button
-                type="button"
-                onClick={resetForm}
-                className="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-300 transition"
-              >
-                Cancelar
-              </button>
-            </div>
-          </form>
+            <button
+              onClick={() => exportarArchivo(`/export/comprobante/${selected.id}/pdf`, `comprobante_${selected.numero}.pdf`)}
+              className="w-full py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700"
+            >
+              <Printer className="w-4 h-4 inline mr-1" /> Imprimir PDF
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Tabla */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <table className="w-full">
-          <thead className="bg-gray-50 border-b border-gray-200">
-            <tr>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Nº</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Fecha</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Glosa</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Estado</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {comprobantes
-              .filter(c =>
-                !busqueda ||
-                String(c.numero).includes(busqueda) ||
-                (c.glosa && c.glosa.toLowerCase().includes(busqueda.toLowerCase())) ||
-                (c.Usuario && c.Usuario.nombreCompleto && c.Usuario.nombreCompleto.toLowerCase().includes(busqueda.toLowerCase()))
-              )
-              .slice((pagina - 1) * porPagina, pagina * porPagina)
-              .map((c) => (
-              <tr key={c.id} className={`hover:bg-gray-50 ${c.estado === 'anulado' ? 'opacity-60' : ''}`}>
-                <td className="px-4 py-3 font-mono text-sm font-medium text-indigo-600">
-                  {String(c.numero).padStart(4, '0')}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600">{c.fecha}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    c.tipoComprobante === 'ingreso' ? 'bg-green-100 text-green-700' :
-                    c.tipoComprobante === 'egreso' ? 'bg-red-100 text-red-700' :
-                    'bg-blue-100 text-blue-700'
-                  }`}>
-                    {c.tipoComprobante.charAt(0).toUpperCase() + c.tipoComprobante.slice(1)}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-600 max-w-xs truncate">{c.glosa}</td>
-                <td className="px-4 py-3">
-                  <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                    c.estado === 'activo' ? 'bg-green-100 text-green-700' :
-                    c.estado === 'contabilizado' ? 'bg-blue-100 text-blue-700' :
-                    'bg-red-100 text-red-700'
-                  }`}>
-                    {c.estado === 'activo' ? 'Activo' : c.estado === 'contabilizado' ? 'Contabilizado' : 'Anulado'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-right">
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      onClick={() => handleExportarPdf(c.id)}
-                      className="p-1.5 text-gray-500 hover:text-green-600 transition"
-                      title="Exportar PDF"
-                    >
-                      <Eye className="w-4 h-4" />
-                    </button>
-                    {c.estado === 'activo' && (
-                      <>
-                        <button
-                          onClick={() => handleEdit(c)}
-                          className="p-1.5 text-gray-500 hover:text-indigo-600 transition"
-                          title="Editar"
-                        >
-                          <Edit2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleAnular(c.id)}
-                          className="p-1.5 text-gray-500 hover:text-orange-600 transition"
-                          title="Anular"
-                        >
-                          <XCircle className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(c.id)}
-                          className="p-1.5 text-gray-500 hover:text-red-600 transition"
-                          title="Eliminar"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                        <button
-                          onClick={() => handleContabilizar(c.id)}
-                          className="p-1.5 text-gray-500 hover:text-blue-600 transition"
-                          title="Contabilizar"
-                        >
-                          <CheckCircle className="w-4 h-4" />
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {comprobantes.length === 0 && (
-          <div className="text-center py-12 text-gray-500">
-            <FileText className="w-12 h-12 mx-auto mb-3 text-gray-300" />
-            <p>No hay comprobantes registrados</p>
-          </div>
-        )}
-      </div>
-
-      {/* Paginación */}
-      {(() => {
-        const filtrados = comprobantes.filter(c =>
-          !busqueda ||
-          String(c.numero).includes(busqueda) ||
-          (c.glosa && c.glosa.toLowerCase().includes(busqueda.toLowerCase())) ||
-          (c.Usuario && c.Usuario.nombreCompleto && c.Usuario.nombreCompleto.toLowerCase().includes(busqueda.toLowerCase()))
-        );
-        const totalPaginas = Math.ceil(filtrados.length / porPagina);
-        if (totalPaginas <= 1) return null;
-
-        return (
-          <div className="flex items-center justify-between bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-            <p className="text-sm text-gray-600">
-              Mostrando {(pagina - 1) * porPagina + 1} - {Math.min(pagina * porPagina, filtrados.length)} de {filtrados.length}
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPagina(p => Math.max(1, p - 1))}
-                disabled={pagina === 1}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Anterior
-              </button>
-              {Array.from({ length: totalPaginas }, (_, i) => i + 1).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPagina(p)}
-                  className={`px-3 py-1 text-sm rounded-lg ${
-                    p === pagina
-                      ? 'bg-indigo-600 text-white'
-                      : 'border border-gray-300 hover:bg-gray-50'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
-              <button
-                onClick={() => setPagina(p => Math.min(totalPaginas, p + 1))}
-                disabled={pagina === totalPaginas}
-                className="px-3 py-1 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Siguiente
-              </button>
-            </div>
-          </div>
-        );
-      })()}
-
-      <ConfirmModal
-        isOpen={modalConfirm.isOpen}
-        onClose={() => setModalConfirm({ isOpen: false, type: '', id: null })}
-        onConfirm={handleConfirmAction}
-        title={
-          modalConfirm.type === 'anular' ? 'Anular Comprobante' :
-          modalConfirm.type === 'contabilizar' ? 'Contabilizar Comprobante' :
-          'Eliminar Comprobante'
-        }
-        message={
-          modalConfirm.type === 'anular'
-            ? '¿Está seguro de anular este comprobante? Esta acción no se puede deshacer.'
-            : modalConfirm.type === 'contabilizar'
-            ? '¿Está seguro de contabilizar este comprobante? No podrá ser editado ni eliminado.'
-            : '¿Está seguro de eliminar este comprobante?'
-        }
-        confirmText={
-          modalConfirm.type === 'anular' ? 'Anular' :
-          modalConfirm.type === 'contabilizar' ? 'Contabilizar' :
-          'Eliminar'
-        }
-        variant={
-          modalConfirm.type === 'anular' ? 'warning' :
-          modalConfirm.type === 'contabilizar' ? 'info' :
-          'danger'
-        }
-      />
+      {confirmAccion && (
+        <ConfirmModal
+          titulo={confirmAccion.tipo === 'anular' ? 'Anular' : confirmAccion.tipo === 'eliminar' ? 'Eliminar' : confirmAccion.tipo === 'contabilizar' ? 'Contabilizar' : 'Cambiar Estado'}
+          mensaje={confirmAccion.tipo === 'anular' ? '¿Anular este comprobante?' : confirmAccion.tipo === 'eliminar' ? '¿Eliminar este comprobante?' : confirmAccion.tipo === 'contabilizar' ? '¿Contabilizar este comprobante?' : '¿Cambiar estado de pago?'}
+          danger={['anular', 'eliminar'].includes(confirmAccion.tipo)}
+          onConfirm={() => accion(confirmAccion.tipo, confirmAccion.id)}
+          onCancel={() => setConfirmAccion(null)}
+        />
+      )}
     </div>
   );
 }

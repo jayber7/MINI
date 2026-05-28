@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import api from '../services/api';
-import { Plus, Edit2, Trash2, ChevronRight, ChevronDown, FolderOpen, FileText } from 'lucide-react';
+import { Plus, Edit2, Trash2, ChevronRight, ChevronDown, FolderOpen, FileText, Upload, Maximize2, Minimize2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
+import { AuthContext } from '../context/AuthContext';
 
 export default function PlanCuentas() {
+  const { empresa } = useContext(AuthContext);
   const [cuentas, setCuentas] = useState([]);
   const [cargando, setCargando] = useState(true);
   const [mostrarFormulario, setMostrarFormulario] = useState(false);
@@ -12,6 +14,9 @@ export default function PlanCuentas() {
   const [expandidas, setExpandidas] = useState({});
   const [modalConfirm, setModalConfirm] = useState({ isOpen: false, id: null });
   const [busqueda, setBusqueda] = useState('');
+  const [importando, setImportando] = useState(false);
+  const fileInputRef = useRef(null);
+  const expandidasRef = useRef(expandidas);
   const [form, setForm] = useState({
     codigo: '',
     nombre: '',
@@ -82,6 +87,64 @@ export default function PlanCuentas() {
     } catch (error) {
       toast.error(error.response?.data?.error || 'Error al eliminar cuenta');
     }
+  };
+
+  const empresaId = empresa?.id;
+
+  useEffect(() => {
+    expandidasRef.current = expandidas;
+  }, [expandidas]);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    const saved = localStorage.getItem(`expandidas_${empresaId}`);
+    if (saved) {
+      try { setExpandidas(JSON.parse(saved)); } catch {}
+    } else {
+      setExpandidas({});
+    }
+  }, [empresaId]);
+
+  useEffect(() => {
+    if (!empresaId) return;
+    localStorage.setItem(`expandidas_${empresaId}`, JSON.stringify(expandidas));
+  }, [expandidas, empresaId]);
+
+  useEffect(() => {
+    if (!busqueda || cuentas.length === 0) return;
+    const mapa = {};
+    cuentas.forEach(c => { mapa[c.id] = c; });
+    const ancestros = new Set();
+    cuentas.forEach(c => {
+      const match = c.codigo.toLowerCase().includes(busqueda.toLowerCase()) ||
+                    c.nombre.toLowerCase().includes(busqueda.toLowerCase());
+      if (!match) return;
+      let pid = c.padreId;
+      while (pid && mapa[pid]) {
+        ancestros.add(pid);
+        pid = mapa[pid].padreId;
+      }
+    });
+    if (ancestros.size > 0) {
+      setExpandidas(prev => {
+        const next = { ...prev };
+        ancestros.forEach(id => { next[id] = true; });
+        return next;
+      });
+    }
+  }, [busqueda, cuentas]);
+
+  const expandirTodo = () => {
+    const todas = {};
+    cuentas.forEach(c => { if (c.padreId) todas[c.id] = false; });
+    const hijosPorPadre = {};
+    cuentas.forEach(c => { if (c.padreId) (hijosPorPadre[c.padreId] ??= []).push(c.id); });
+    cuentas.forEach(c => { if (hijosPorPadre[c.id]) todas[c.id] = true; });
+    setExpandidas(todas);
+  };
+
+  const colapsarTodo = () => {
+    setExpandidas({});
   };
 
   const toggleExpandir = (id) => {
@@ -209,13 +272,47 @@ export default function PlanCuentas() {
             {busqueda ? `${cuentasFiltradas.length} de ${cuentas.length} cuentas` : `${cuentas.length} cuentas registradas`}
           </p>
         </div>
-        <button
-          onClick={() => setMostrarFormulario(true)}
-          className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
-        >
-          <Plus className="w-4 h-4" />
-          Nueva Cuenta
-        </button>
+        <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files[0];
+              if (!file) return;
+              setImportando(true);
+              try {
+                const formData = new FormData();
+                formData.append('archivo', file);
+                const { data } = await api.post('/plan-cuentas/importar', formData, {
+                  headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                toast.success(`Importación completada: ${data.total} cuentas procesadas`);
+                cargarCuentas();
+              } catch (err) {
+                toast.error(err.response?.data?.error || 'Error al importar');
+              }
+              setImportando(false);
+              e.target.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importando}
+            className="flex items-center gap-2 border border-indigo-300 text-indigo-700 px-4 py-2 rounded-lg hover:bg-indigo-50 transition disabled:opacity-50"
+          >
+            <Upload className="w-4 h-4" />
+            {importando ? 'Importando...' : 'Importar Excel'}
+          </button>
+          <button
+            onClick={() => setMostrarFormulario(true)}
+            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition"
+          >
+            <Plus className="w-4 h-4" />
+            Nueva Cuenta
+          </button>
+        </div>
       </div>
 
       {/* Búsqueda */}
@@ -338,8 +435,26 @@ export default function PlanCuentas() {
 
       {/* Árbol de cuentas */}
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="bg-gray-50 px-4 py-2 border-b border-gray-100 flex items-center justify-between">
-          <span className="text-sm font-medium text-gray-600">Estructura de Cuentas</span>
+        <div className="bg-gray-50 px-4 py-2 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-gray-600">Estructura de Cuentas</span>
+            <div className="flex gap-1">
+              <button
+                onClick={expandirTodo}
+                className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
+                title="Expandir todo"
+              >
+                <Maximize2 className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={colapsarTodo}
+                className="p-1 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded transition"
+                title="Colapsar todo"
+              >
+                <Minimize2 className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
           <div className="flex gap-3 text-xs">
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400"></span>Activo</span>
             <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-400"></span>Pasivo</span>

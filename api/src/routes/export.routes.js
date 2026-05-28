@@ -24,7 +24,7 @@ router.get('/comprobante/:id/pdf', exportController.exportarComprobantePDF);
 router.get('/libro-diario/pdf', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerLibroDiario(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerLibroDiario(fechas.desde, fechas.hasta, req.query.proyecto, req.empresaId);
   const formateados = datos.map(comp => ({
     titulo: `Comprobante Nº ${String(comp.numero).padStart(4, '0')} - ${comp.fecha} - ${comp.glosa}`,
     headers: ['Cuenta', 'Descripción', 'Debe', 'Haber'],
@@ -43,7 +43,7 @@ router.get('/libro-diario/pdf', async (req, res) => {
 router.get('/libro-mayor/pdf', async (req, res) => {
   const { desde, hasta, codigoCuenta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerLibroMayor(fechas.desde, fechas.hasta, codigoCuenta);
+  const datos = await reporteController.obtenerLibroMayor(fechas.desde, fechas.hasta, codigoCuenta, req.empresaId);
   const formateados = datos.map(cuenta => ({
     titulo: `${cuenta.codigo} - ${cuenta.nombre} (${cuenta.tipo}) - Saldo: ${cuenta.saldo.toFixed(2)}`,
     headers: ['Fecha', 'Nº', 'Glosa', 'Debe', 'Haber'],
@@ -63,7 +63,7 @@ router.get('/libro-mayor/pdf', async (req, res) => {
 router.get('/balance-general/pdf', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerBalanceGeneral(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerBalanceGeneral(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [];
 
   resultado.push({
@@ -99,7 +99,7 @@ router.get('/balance-general/pdf', async (req, res) => {
 router.get('/estado-resultados/pdf', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerEstadoResultados(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerEstadoResultados(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [];
 
   resultado.push({
@@ -132,7 +132,7 @@ router.get('/estado-resultados/pdf', async (req, res) => {
 router.get('/evolucion-patrimonio/pdf', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerEvolucionPatrimonio(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerEvolucionPatrimonio(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [{
     titulo: 'PATRIMONIO',
     headers: ['Código', 'Cuenta', 'Saldo', ''],
@@ -150,7 +150,7 @@ router.get('/evolucion-patrimonio/pdf', async (req, res) => {
 router.get('/sumas-saldos/pdf', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerSumasSaldos(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerSumasSaldos(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [{
     titulo: 'SUMAS Y SALDOS',
     headers: ['Código', 'Cuenta', 'Suma Debe', 'Suma Haber', 'Saldo Deudor', 'Saldo Acreedor'],
@@ -172,7 +172,7 @@ router.get('/sumas-saldos/pdf', async (req, res) => {
 router.get('/libro-diario/excel', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerLibroDiario(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerLibroDiario(fechas.desde, fechas.hasta, req.query.proyecto, req.empresaId);
   const formateados = datos.map(comp => ({
     titulo: `Comprobante Nº ${String(comp.numero).padStart(4, '0')} - ${comp.fecha} - ${comp.glosa}`,
     headers: ['Cuenta', 'Descripción', 'Debe', 'Haber'],
@@ -190,7 +190,7 @@ router.get('/libro-diario/excel', async (req, res) => {
 router.get('/libro-mayor/excel', async (req, res) => {
   const { desde, hasta, codigoCuenta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerLibroMayor(fechas.desde, fechas.hasta, codigoCuenta);
+  const datos = await reporteController.obtenerLibroMayor(fechas.desde, fechas.hasta, codigoCuenta, req.empresaId);
   const formateados = datos.map(cuenta => ({
     titulo: `${cuenta.codigo} - ${cuenta.nombre} (${cuenta.tipo})`,
     headers: ['Fecha', 'Nº', 'Glosa', 'Debe', 'Haber'],
@@ -209,7 +209,7 @@ router.get('/libro-mayor/excel', async (req, res) => {
 router.get('/balance-general/excel', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerBalanceGeneral(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerBalanceGeneral(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [];
 
   resultado.push({
@@ -242,7 +242,7 @@ router.get('/balance-general/excel', async (req, res) => {
 router.get('/estado-resultados/excel', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerEstadoResultados(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerEstadoResultados(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [];
 
   resultado.push({
@@ -272,7 +272,7 @@ router.get('/estado-resultados/excel', async (req, res) => {
 router.get('/evolucion-patrimonio/excel', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerEvolucionPatrimonio(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerEvolucionPatrimonio(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [{
     titulo: 'PATRIMONIO',
     headers: ['Código', 'Cuenta', 'Saldo'],
@@ -289,7 +289,7 @@ router.get('/evolucion-patrimonio/excel', async (req, res) => {
 router.get('/sumas-saldos/excel', async (req, res) => {
   const { desde, hasta, gestionId } = req.query;
   const fechas = await resolverFechas(desde, hasta, gestionId);
-  const datos = await reporteController.obtenerSumasSaldos(fechas.desde, fechas.hasta);
+  const datos = await reporteController.obtenerSumasSaldos(fechas.desde, fechas.hasta, req.empresaId);
   const resultado = [{
     titulo: 'SUMAS Y SALDOS',
     headers: ['Código', 'Cuenta', 'Suma Debe', 'Suma Haber', 'Saldo Deudor', 'Saldo Acreedor'],

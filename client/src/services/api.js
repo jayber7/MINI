@@ -15,6 +15,10 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  const empresaId = localStorage.getItem('empresaId');
+  if (empresaId) {
+    config.headers['x-empresa-id'] = empresaId;
+  }
   return config;
 });
 

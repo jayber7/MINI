@@ -1,7 +1,7 @@
 const { Comprobante, ComprobanteDetalle, PlanCuenta, Gestion, Proyecto, Usuario, Empresa } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 
-async function resolverFechas(desde, hasta, gestionId) {
+async function resolverFechas(desde, hasta, gestionId, empresaId) {
   if (gestionId) {
     const gestion = await Gestion.findByPk(gestionId);
     if (gestion) {
@@ -22,6 +22,29 @@ function aplicarRollUp(cuentas, campoSaldo = 'saldo') {
 
   codigos.forEach((codigo) => {
     const partes = codigo.split('.');
+    // Para formato 10 dígitos, usar primeros 2 caracteres como nivel
+    const esFormato10Digitos = /^\d{10}$/.test(codigo);
+    if (esFormato10Digitos) {
+      if (codigo.endsWith('000000000')) {
+        raices.push(mapa[codigo]);
+        return;
+      }
+      // Encontrar padre: quitar últimos 2 dígitos no cero, luego rellenar con ceros
+      let codigoPadre = codigo;
+      while (codigoPadre.length > 2 && codigoPadre.endsWith('0')) {
+        codigoPadre = codigoPadre.slice(0, -1);
+      }
+      if (codigoPadre.length < 10) {
+        codigoPadre = codigoPadre.padEnd(10, '0');
+      }
+      if (mapa[codigoPadre]) {
+        mapa[codigoPadre].hijos.push(mapa[codigo]);
+      } else {
+        raices.push(mapa[codigo]);
+      }
+      return;
+    }
+
     if (partes.length <= 1) {
       raices.push(mapa[codigo]);
       return;
@@ -63,8 +86,8 @@ function aplicarRollUp(cuentas, campoSaldo = 'saldo') {
   return resultado;
 }
 
-async function obtenerLibroDiario(desde, hasta, proyecto) {
-  const where = { estado: 'activo' };
+async function obtenerLibroDiario(desde, hasta, proyecto, empresaId) {
+  const where = { estado: 'activo', empresaId };
 
   if (desde || hasta) {
     where.fecha = {};
@@ -123,7 +146,7 @@ async function libroDiario(req, res) {
   try {
     const { desde, hasta, proyecto, gestionId } = req.query;
     const fechas = await resolverFechas(desde, hasta, gestionId);
-    const resultado = await obtenerLibroDiario(fechas.desde, fechas.hasta, proyecto);
+    const resultado = await obtenerLibroDiario(fechas.desde, fechas.hasta, proyecto, req.empresaId);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Libro Diario:', error);
@@ -131,8 +154,8 @@ async function libroDiario(req, res) {
   }
 }
 
-async function obtenerLibroMayor(desde, hasta, codigoCuenta) {
-  const whereComprobante = { estado: 'activo' };
+async function obtenerLibroMayor(desde, hasta, codigoCuenta, empresaId) {
+  const whereComprobante = { estado: 'activo', empresaId };
 
   if (desde || hasta) {
     whereComprobante.fecha = {};
@@ -202,7 +225,7 @@ async function libroMayor(req, res) {
   try {
     const { desde, hasta, codigoCuenta, gestionId } = req.query;
     const fechas = await resolverFechas(desde, hasta, gestionId);
-    const resultado = await obtenerLibroMayor(fechas.desde, fechas.hasta, codigoCuenta);
+    const resultado = await obtenerLibroMayor(fechas.desde, fechas.hasta, codigoCuenta, req.empresaId);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Libro Mayor:', error);
@@ -210,8 +233,8 @@ async function libroMayor(req, res) {
   }
 }
 
-async function obtenerBalanceGeneral(desde, hasta) {
-  const where = { estado: 'activo' };
+async function obtenerBalanceGeneral(desde, hasta, empresaId) {
+  const where = { estado: 'activo', empresaId };
   if (desde || hasta) {
     where.fecha = {};
     if (desde) where.fecha[Op.gte] = desde;
@@ -219,6 +242,7 @@ async function obtenerBalanceGeneral(desde, hasta) {
   }
 
   const cuentas = await PlanCuenta.findAll({
+    where: { empresaId },
     include: [
       {
         model: ComprobanteDetalle,
@@ -283,7 +307,7 @@ async function obtenerBalanceGeneral(desde, hasta) {
   resultado.pasivo.cuentas.forEach((c) => { if (c.nivel === 1) resultado.pasivo.total += c.saldo; });
   resultado.patrimonio.cuentas.forEach((c) => { if (c.nivel === 1) resultado.patrimonio.total += c.saldo; });
 
-  resultado.utilidadEjercicio = await calcularUtilidad(desde, hasta);
+  resultado.utilidadEjercicio = await calcularUtilidad(desde, hasta, empresaId);
   resultado.patrimonio.total += resultado.utilidadEjercicio;
 
   return resultado;
@@ -293,7 +317,7 @@ async function balanceGeneral(req, res) {
   try {
     const { desde, hasta, gestionId } = req.query;
     const fechas = await resolverFechas(desde, hasta, gestionId);
-    const resultado = await obtenerBalanceGeneral(fechas.desde, fechas.hasta);
+    const resultado = await obtenerBalanceGeneral(fechas.desde, fechas.hasta, req.empresaId);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Balance General:', error);
@@ -301,9 +325,9 @@ async function balanceGeneral(req, res) {
   }
 }
 
-async function obtenerEstadoResultados(desde, hasta) {
-  const ingresos = await calcularPorTipo('Ingreso', desde, hasta);
-  const gastos = await calcularPorTipo('Gasto', desde, hasta);
+async function obtenerEstadoResultados(desde, hasta, empresaId) {
+  const ingresos = await calcularPorTipo('Ingreso', desde, hasta, empresaId);
+  const gastos = await calcularPorTipo('Gasto', desde, hasta, empresaId);
 
   const totalIngresos = ingresos.reduce((sum, c) => sum + c.saldo, 0);
   const totalGastos = gastos.reduce((sum, c) => sum + c.saldo, 0);
@@ -325,7 +349,7 @@ async function estadoResultados(req, res) {
   try {
     const { desde, hasta, gestionId } = req.query;
     const fechas = await resolverFechas(desde, hasta, gestionId);
-    const resultado = await obtenerEstadoResultados(fechas.desde, fechas.hasta);
+    const resultado = await obtenerEstadoResultados(fechas.desde, fechas.hasta, req.empresaId);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Estado de Resultados:', error);
@@ -333,17 +357,45 @@ async function estadoResultados(req, res) {
   }
 }
 
-async function obtenerEvolucionPatrimonio(desde, hasta) {
-  const patrimonio = await calcularPorTipo('Patrimonio', desde, hasta);
+async function obtenerEvolucionPatrimonio(desde, hasta, empresaId) {
+  const patrimonio = await calcularPorTipo('Patrimonio', desde, hasta, empresaId);
   const totalPatrimonio = patrimonio.reduce((sum, c) => sum + c.saldo, 0);
 
-  const utilidad = await calcularUtilidad(desde, hasta);
+  const utilidad = await calcularUtilidad(desde, hasta, empresaId);
+
+  // Mapeo específico para Estado de Patrimonio
+  const itemCapital = patrimonio.find(c =>
+    c.nombre.toLowerCase().includes('capital social') ||
+    c.codigo.startsWith('3.1') || c.codigo.startsWith('30101')
+  );
+  const itemAjusteCapital = patrimonio.find(c =>
+    c.nombre.toLowerCase().includes('ajuste de capital') ||
+    c.codigo.startsWith('3010202')
+  );
+  const itemReservaLegal = patrimonio.find(c =>
+    c.nombre.toLowerCase().includes('reserva legal') ||
+    c.codigo.startsWith('3.2.1')
+  );
+  const itemAjusteReservas = patrimonio.find(c =>
+    c.nombre.toLowerCase().includes('ajuste de reservas')
+  );
+  const itemResultadosAcum = patrimonio.find(c =>
+    c.nombre.toLowerCase().includes('resultados acumulados') ||
+    c.codigo.startsWith('3.2.2') || c.codigo.startsWith('3010301')
+  );
 
   return {
     patrimonioInicial: totalPatrimonio,
     utilidad: utilidad,
     patrimonioFinal: totalPatrimonio + utilidad,
     detalle: patrimonio,
+    items: [
+      { nombre: 'Capital Social', saldo: itemCapital?.saldo || 0 },
+      { nombre: 'Ajuste de Capital', saldo: itemAjusteCapital?.saldo || 0 },
+      { nombre: 'Reserva Legal', saldo: itemReservaLegal?.saldo || 0 },
+      { nombre: 'Ajuste de Reservas Patrimoniales', saldo: itemAjusteReservas?.saldo || 0 },
+      { nombre: 'Resultados Acumulados', saldo: itemResultadosAcum?.saldo || 0 },
+    ],
   };
 }
 
@@ -351,7 +403,7 @@ async function evolucionPatrimonio(req, res) {
   try {
     const { desde, hasta, gestionId } = req.query;
     const fechas = await resolverFechas(desde, hasta, gestionId);
-    const resultado = await obtenerEvolucionPatrimonio(fechas.desde, fechas.hasta);
+    const resultado = await obtenerEvolucionPatrimonio(fechas.desde, fechas.hasta, req.empresaId);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Evolución del Patrimonio:', error);
@@ -359,8 +411,8 @@ async function evolucionPatrimonio(req, res) {
   }
 }
 
-async function obtenerSumasSaldos(desde, hasta) {
-  const where = { estado: 'activo' };
+async function obtenerSumasSaldos(desde, hasta, empresaId) {
+  const where = { estado: 'activo', empresaId };
   if (desde || hasta) {
     where.fecha = {};
     if (desde) where.fecha[Op.gte] = desde;
@@ -368,6 +420,7 @@ async function obtenerSumasSaldos(desde, hasta) {
   }
 
   const cuentas = await PlanCuenta.findAll({
+    where: { empresaId },
     include: [
       {
         model: ComprobanteDetalle,
@@ -452,7 +505,7 @@ async function sumasSaldos(req, res) {
   try {
     const { desde, hasta, gestionId } = req.query;
     const fechas = await resolverFechas(desde, hasta, gestionId);
-    const resultado = await obtenerSumasSaldos(fechas.desde, fechas.hasta);
+    const resultado = await obtenerSumasSaldos(fechas.desde, fechas.hasta, req.empresaId);
     res.json(resultado);
   } catch (error) {
     console.error('Error en Sumas y Saldos:', error);
@@ -460,8 +513,8 @@ async function sumasSaldos(req, res) {
   }
 }
 
-async function calcularPorTipo(tipo, desde, hasta) {
-  const where = { estado: 'activo' };
+async function calcularPorTipo(tipo, desde, hasta, empresaId) {
+  const where = { estado: 'activo', empresaId };
   if (desde || hasta) {
     where.fecha = {};
     if (desde) where.fecha[Op.gte] = desde;
@@ -469,7 +522,7 @@ async function calcularPorTipo(tipo, desde, hasta) {
   }
 
   const cuentas = await PlanCuenta.findAll({
-    where: { tipo },
+    where: { tipo, empresaId },
     include: [
       {
         model: ComprobanteDetalle,
@@ -510,9 +563,9 @@ async function calcularPorTipo(tipo, desde, hasta) {
   return aplicarRollUp(cuentasConSaldo, 'saldo');
 }
 
-async function calcularUtilidad(desde, hasta) {
-  const ingresos = await calcularPorTipo('Ingreso', desde, hasta);
-  const gastos = await calcularPorTipo('Gasto', desde, hasta);
+async function calcularUtilidad(desde, hasta, empresaId) {
+  const ingresos = await calcularPorTipo('Ingreso', desde, hasta, empresaId);
+  const gastos = await calcularPorTipo('Gasto', desde, hasta, empresaId);
 
   const totalIngresos = ingresos.reduce((sum, c) => sum + c.saldo, 0);
   const totalGastos = gastos.reduce((sum, c) => sum + c.saldo, 0);

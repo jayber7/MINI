@@ -10,6 +10,14 @@ const Comprobante = sequelize.define('Comprobante', {
     type: DataTypes.ENUM('ingreso', 'egreso', 'traspaso'),
     allowNull: false,
   },
+  documentoTipo: {
+    type: DataTypes.ENUM('factura', 'nota_credito', 'nota_debito', 'recibo'),
+    allowNull: true,
+  },
+  documentoNumero: {
+    type: DataTypes.STRING,
+    allowNull: true,
+  },
   glosa: {
     type: DataTypes.STRING,
     allowNull: false,
@@ -22,6 +30,28 @@ const Comprobante = sequelize.define('Comprobante', {
     type: DataTypes.ENUM('activo', 'anulado', 'contabilizado'),
     allowNull: false,
     defaultValue: 'activo',
+  },
+  pagado: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false,
+  },
+  fechaPago: {
+    type: DataTypes.DATEONLY,
+    allowNull: true,
+  },
+  subtotal: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+  },
+  descuento: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
+    defaultValue: 0,
+  },
+  iva: {
+    type: DataTypes.FLOAT,
+    allowNull: true,
   },
   proyectoId: {
     type: DataTypes.INTEGER,
@@ -78,6 +108,22 @@ const Comprobante = sequelize.define('Comprobante', {
   fechaContabilizacion: {
     type: DataTypes.DATE,
     allowNull: true,
+  },
+  vendedorId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'usuarios',
+      key: 'id',
+    },
+  },
+  clienteProveedorId: {
+    type: DataTypes.INTEGER,
+    allowNull: true,
+    references: {
+      model: 'clientes_proveedores',
+      key: 'id',
+    },
   },
   cheque: {
     type: DataTypes.STRING,

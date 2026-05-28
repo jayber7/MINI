@@ -1,232 +1,119 @@
 import { useState, useEffect } from 'react';
-import api, { exportarArchivo } from '../services/api';
-import { PieChart, Download } from 'lucide-react';
+import api from '../services/api';
+import { exportarArchivo } from '../services/api';
+
+const formatBs = (n) => `Bs. ${(n || 0).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')}`;
 
 export default function EstadoResultados() {
-  const [datos, setDatos] = useState(null);
-  const [cargando, setCargando] = useState(false);
-  const [desde, setDesde] = useState('');
-  const [hasta, setHasta] = useState('');
-  const [gestionId, setGestionId] = useState('');
+  const [data, setData] = useState(null);
   const [gestiones, setGestiones] = useState([]);
+  const [gestionId, setGestionId] = useState('');
   const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
-    api.get('/gestiones').then(({ data }) => {
-      setGestiones(data);
-      if (data.length > 0 && !gestionId) {
-        setGestionId(data[0].id);
-        setDesde(data[0].fechaInicio);
-        setHasta(data[0].fechaFin);
-      }
-    }).catch(() => {});
+    api.get('/gestiones').then(({ data }) => setGestiones(data)).catch(() => {});
   }, []);
 
-  const handleGestionChange = (id) => {
-    setGestionId(id);
-    const g = gestiones.find((x) => x.id === parseInt(id));
-    if (g) { setDesde(g.fechaInicio); setHasta(g.fechaFin); }
-  };
-
-  const cargarDatos = async () => {
-    setCargando(true);
-    try {
-      const params = {};
-      if (gestionId) params.gestionId = gestionId;
-      if (desde) params.desde = desde;
-      if (hasta) params.hasta = hasta;
-
-      const { data } = await api.get('/reportes/estado-resultados', { params });
-      setDatos(data);
-    } catch (error) {
-      console.error('Error cargando Estado de Resultados:', error);
-    } finally {
-      setCargando(false);
-    }
-  };
-
   useEffect(() => {
-    if (gestionId) cargarDatos();
+    const params = {};
+    if (gestionId) params.gestionId = gestionId;
+    api.get('/reportes/estado-resultados', { params }).then(({ data }) => setData(data)).catch(() => {});
   }, [gestionId]);
 
-  const handleExportPDF = () => {
-    setExportando(true);
-    const params = new URLSearchParams();
-    if (gestionId) params.append('gestionId', gestionId);
-    if (desde) params.append('desde', desde);
-    if (hasta) params.append('hasta', hasta);
-    exportarArchivo(`/export/estado-resultados/pdf?${params}`, 'estado_resultados.pdf')
-      .finally(() => setExportando(false));
-  };
-
-  const handleExportExcel = () => {
-    setExportando(true);
-    const params = new URLSearchParams();
-    if (gestionId) params.append('gestionId', gestionId);
-    if (desde) params.append('desde', desde);
-    if (hasta) params.append('hasta', hasta);
-    exportarArchivo(`/export/estado-resultados/excel?${params}`, 'estado_resultados.xlsx')
-      .finally(() => setExportando(false));
-  };
-
-  const formatBs = (n) => n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-
-  if (cargando) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
-      </div>
-    );
-  }
-
-  if (!datos) return null;
-
-  const renderCuentas = (cuentas) => {
-    return cuentas.map((c, i) => {
-      const esPadre = c.nivel && c.nivel <= 2;
-      const indent = (c.nivel || 1) * 20 + 16;
-      return (
-        <tr key={i} className={`hover:bg-gray-50 ${esPadre ? 'bg-gray-50' : ''}`}>
-          <td className={`px-4 py-2 font-mono text-indigo-600 ${esPadre ? 'font-bold' : ''}`} style={{ paddingLeft: `${indent}px` }}>
-            {c.codigo}
-          </td>
-          <td className={`px-4 py-2 ${esPadre ? 'font-bold text-gray-800' : 'text-gray-600'}`} style={{ paddingLeft: `${indent}px` }}>
-            {c.nombre}
-          </td>
-          <td className={`px-4 py-2 text-right font-mono ${esPadre ? 'font-bold' : ''}`}>
-            Bs. {formatBs(c.saldo || 0)}
-          </td>
-        </tr>
-      );
-    });
-  };
+  const exportPDF = () => { setExportando(true); exportarArchivo(`/export/estado-resultados/pdf${gestionId ? `?gestionId=${gestionId}` : ''}`, 'estado_resultados.pdf').finally(() => setExportando(false)); };
+  const exportExcel = () => { setExportando(true); exportarArchivo(`/export/estado-resultados/excel${gestionId ? `?gestionId=${gestionId}` : ''}`, 'estado_resultados.xlsx').finally(() => setExportando(false)); };
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-gray-900">Estado de Resultados</h1>
+    <div>
+      <div className="flex items-center justify-between mb-4">
+        <h1 className="text-2xl font-bold text-gray-800">Estado de Resultados</h1>
         <div className="flex gap-2">
-          <button
-            onClick={handleExportPDF}
-            disabled={exportando}
-            className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            PDF
-          </button>
-          <button
-            onClick={handleExportExcel}
-            disabled={exportando}
-            className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-          >
-            <Download className="w-4 h-4" />
-            Excel
-          </button>
+          <select value={gestionId} onChange={e => setGestionId(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm">
+            <option value="">Todas</option>
+            {gestiones.map(g => <option key={g.id} value={g.id}>Gestión {g.year}</option>)}
+          </select>
+          <button onClick={exportPDF} disabled={exportando} className="px-3 py-2 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 disabled:opacity-50">PDF</button>
+          <button onClick={exportExcel} disabled={exportando} className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm hover:bg-blue-700 disabled:opacity-50">Excel</button>
         </div>
       </div>
 
-      {/* Filtros */}
-      <div className="bg-white rounded-xl shadow-sm p-4 border border-gray-100">
-        <div className="flex items-center gap-4">
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Gestión</label>
-            <select value={gestionId} onChange={(e) => handleGestionChange(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm min-w-[150px]">
-              <option value="">Seleccionar</option>
-              {gestiones.map((g) => (<option key={g.id} value={g.id}>{g.year} - {g.glosa}</option>))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Desde</label>
-            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs text-gray-500 mb-1">Hasta</label>
-            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-          </div>
-          <button onClick={cargarDatos} className="mt-5 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition text-sm">
-            Generar
-          </button>
-        </div>
-      </div>
-
-      {/* Reporte */}
-      <div className="max-w-3xl mx-auto bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        {/* Ingresos */}
-        <div className="bg-blue-50 px-4 py-3 border-b border-blue-100">
-          <h2 className="font-bold text-blue-800 text-lg">INGRESOS</h2>
-        </div>
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-50">
-            {renderCuentas(datos.ingresos.cuentas)}
-          </tbody>
-          <tfoot>
-            <tr className="bg-blue-50 border-t-2 border-blue-200">
-              <td colSpan={2} className="px-4 py-3 font-bold text-blue-800">TOTAL INGRESOS</td>
-              <td className="px-4 py-3 text-right font-bold font-mono text-blue-800">
-                Bs. {formatBs(datos.ingresos.total)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-
-        {/* Gastos */}
-        <div className="bg-orange-50 px-4 py-3 border-b border-orange-100 mt-4">
-          <h2 className="font-bold text-orange-800 text-lg">GASTOS</h2>
-        </div>
-        <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-50">
-            {renderCuentas(datos.gastos.cuentas)}
-          </tbody>
-          <tfoot>
-            <tr className="bg-orange-50 border-t-2 border-orange-200">
-              <td colSpan={2} className="px-4 py-3 font-bold text-orange-800">TOTAL GASTOS</td>
-              <td className="px-4 py-3 text-right font-bold font-mono text-orange-800">
-                Bs. {formatBs(datos.gastos.total)}
-              </td>
-            </tr>
-          </tfoot>
-        </table>
-
-        {/* Utilidad */}
-        <div className="px-4 py-4 border-t-2 border-gray-200">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-gray-700">UTILIDAD ANTES DE IMPUESTOS</span>
-              <span className="font-bold font-mono text-lg text-gray-800">
-                Bs. {formatBs(datos.utilidad)}
-              </span>
+      {data && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* INGRESOS */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-blue-50 px-4 py-3 border-b">
+              <span className="font-bold text-blue-700">INGRESOS</span>
             </div>
-            {datos.utilidad > 0 && (
-              <>
-                <div className="flex items-center justify-between text-red-600">
-                  <span className="font-medium">(-) IUE 25%</span>
-                  <span className="font-mono font-semibold">
-                    Bs. {formatBs(datos.utilidad * 0.25)}
-                  </span>
-                </div>
-                <div className="flex items-center justify-between border-t border-gray-200 pt-2">
-                  <span className={`font-bold text-lg ${datos.utilidadNeta >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                    UTILIDAD NETA
-                  </span>
-                  <span className={`font-bold font-mono text-xl ${datos.utilidadNeta >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                    Bs. {formatBs(Math.abs(datos.utilidadNeta))}
-                  </span>
-                </div>
-              </>
-            )}
-            {datos.utilidad <= 0 && (
-              <div className="flex items-center justify-between">
-                <span className={`font-bold text-lg ${datos.utilidad >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                  {datos.utilidad >= 0 ? 'UTILIDAD NETA' : 'PÉRDIDA NETA'}
-                </span>
-                <span className={`font-bold font-mono text-xl ${datos.utilidad >= 0 ? 'text-green-800' : 'text-red-800'}`}>
-                  Bs. {formatBs(Math.abs(datos.utilidad))}
-                </span>
-              </div>
-            )}
+            <table className="w-full">
+              <tbody className="divide-y divide-gray-100">
+                {data.ingresos.cuentas.filter(c => c.nivel > 1).map(c => (
+                  <tr key={c.codigo} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 text-sm" style={{ paddingLeft: `${12 + (c.nivel - 2) * 16}px` }}>{c.nombre}</td>
+                    <td className="px-4 py-2 text-sm text-right font-mono text-blue-600">{formatBs(c.saldo)}</td>
+                  </tr>
+                ))}
+                <tr className="bg-blue-50 font-bold">
+                  <td className="px-4 py-2 text-sm">TOTAL INGRESOS</td>
+                  <td className="px-4 py-2 text-sm text-right font-mono text-blue-700">{formatBs(data.ingresos.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* GASTOS */}
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <div className="bg-orange-50 px-4 py-3 border-b">
+              <span className="font-bold text-orange-700">GASTOS</span>
+            </div>
+            <table className="w-full">
+              <tbody className="divide-y divide-gray-100">
+                {data.gastos.cuentas.filter(c => c.nivel > 1).map(c => (
+                  <tr key={c.codigo} className="hover:bg-gray-50">
+                    <td className="px-4 py-2 text-sm" style={{ paddingLeft: `${12 + (c.nivel - 2) * 16}px` }}>{c.nombre}</td>
+                    <td className="px-4 py-2 text-sm text-right font-mono text-orange-600">{formatBs(c.saldo)}</td>
+                  </tr>
+                ))}
+                <tr className="bg-orange-50 font-bold">
+                  <td className="px-4 py-2 text-sm">TOTAL GASTOS</td>
+                  <td className="px-4 py-2 text-sm text-right font-mono text-orange-700">{formatBs(data.gastos.total)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* RESUMEN DERECHO */}
+          <div className="lg:col-span-2 bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <tbody className="divide-y divide-gray-100">
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium">Total Ingresos</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono text-blue-600">{formatBs(data.ingresos.total)}</td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium">Total Gastos</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono text-orange-600">({formatBs(data.gastos.total)})</td>
+                </tr>
+                <tr className="border-t-2 border-gray-300">
+                  <td className="px-4 py-3 text-sm font-bold">Utilidad antes de IUE</td>
+                  <td className={`px-4 py-3 text-sm text-right font-bold font-mono ${data.utilidad >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatBs(data.utilidad)}
+                  </td>
+                </tr>
+                <tr className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-sm font-medium">IUE (25%)</td>
+                  <td className="px-4 py-3 text-sm text-right font-mono text-red-600">({formatBs(data.iue)})</td>
+                </tr>
+                <tr className="bg-green-50">
+                  <td className="px-4 py-3 text-sm font-bold text-lg">{data.utilidadNeta >= 0 ? 'UTILIDAD NETA' : 'PÉRDIDA NETA'}</td>
+                  <td className={`px-4 py-3 text-sm text-right font-bold text-lg font-mono ${data.utilidadNeta >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                    {formatBs(Math.abs(data.utilidadNeta))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

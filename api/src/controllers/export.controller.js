@@ -4,7 +4,7 @@ const { Comprobante, ComprobanteDetalle, PlanCuenta, Empresa } = require('../mod
 const { Op } = require('sequelize');
 
 function configurarCabeceraPDF(doc, empresa) {
-  doc.fontSize(16).font('Helvetica-Bold').text(empresa?.nombre || 'EICAP MINI', { align: 'center' });
+  doc.fontSize(16).font('Helvetica-Bold').text(empresa?.nombre || 'MINI', { align: 'center' });
   doc.fontSize(10).font('Helvetica').text(`NIT: ${empresa?.nit || ''}`, { align: 'center' });
   if (empresa?.direccion) {
     doc.text(empresa.direccion, { align: 'center' });
@@ -42,7 +42,7 @@ function configurarPiePDF(doc, empresa) {
   }
 
   doc.fontSize(7).font('Helvetica').text(
-    `Generado: ${new Date().toLocaleString('es-BO')} | EICAP MINI`,
+    `Generado: ${new Date().toLocaleString('es-BO')} | MINI`,
     50, doc.page.height - 30, { align: 'center' }
   );
 }
@@ -53,12 +53,14 @@ function formatBs(n) {
 
 async function exportarComprobantePDF(req, res) {
   try {
-    const comprobante = await Comprobante.findByPk(req.params.id, {
+    const comprobante = await Comprobante.findOne({
+      where: { id: req.params.id, empresaId: req.empresaId },
       include: [
         {
           model: ComprobanteDetalle,
           include: [{ model: PlanCuenta, attributes: ['codigo', 'nombre', 'tipo'] }],
         },
+        { model: require('../models').ClienteProveedor, attributes: ['razonSocial', 'nit'] },
       ],
     });
 
@@ -66,7 +68,7 @@ async function exportarComprobantePDF(req, res) {
       return res.status(404).json({ error: 'Comprobante no encontrado' });
     }
 
-    const empresa = await Empresa.findOne();
+    const empresa = await Empresa.findByPk(req.empresaId || req.query.empresaId) || await Empresa.findOne();
     const doc = new PDFDocument({ size: 'LETTER', margin: 50 });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -79,15 +81,22 @@ async function exportarComprobantePDF(req, res) {
     doc.moveDown(0.5);
 
     doc.fontSize(10).font('Helvetica');
-    doc.text(`Nº: ${String(comprobante.numero).padStart(4, '0')}`, 50, doc.y);
-    doc.text(`Fecha: ${comprobante.fecha}`, 300, doc.y);
-    doc.text(`Tipo: ${comprobante.tipoComprobante.toUpperCase()}`, 450, doc.y);
+    const infoY = doc.y;
+    const halfWidth = 250;
+    doc.text(`Nº: ${String(comprobante.numero).padStart(4, '0')}`, 50, infoY);
+    doc.text(`Fecha: ${comprobante.fecha}`, 50 + halfWidth, infoY);
+    doc.text(`Tipo: ${comprobante.tipoComprobante.toUpperCase()}`, 50 + halfWidth * 2 - 50, infoY);
+
+    if (comprobante.ClienteProveedor) {
+      doc.text(`Cliente: ${comprobante.ClienteProveedor.razonSocial}`, 50, doc.y);
+      doc.moveDown(0.2);
+      doc.text(`NIT: ${comprobante.ClienteProveedor.nit}`, 50, doc.y + 2);
+    }
+
     doc.moveDown(0.5);
     doc.text(`Glosa: ${comprobante.glosa}`);
-    doc.text(`Estado: ${comprobante.estado.toUpperCase()}`);
-    if (comprobante.cheque) {
-      doc.text(`Cheque Nº: ${comprobante.cheque}`);
-    }
+    doc.text(`Estado: ${comprobante.estado.toUpperCase()} | Pago: ${comprobante.pagado ? 'Pagado' : 'Pendiente'}`);
+    if (comprobante.cheque) doc.text(`Cheque Nº: ${comprobante.cheque}`);
     if (comprobante.usd || comprobante.ufv) {
       let tasas = 'Tasas: ';
       if (comprobante.usd) tasas += `USD ${comprobante.usd} `;
@@ -96,23 +105,28 @@ async function exportarComprobantePDF(req, res) {
     }
     doc.moveDown(1);
 
-    // Tabla
+    // Tabla con bordes
     const tableTop = doc.y;
-    const colWidths = [60, 200, 100, 100];
-    const headers = ['Cuenta', 'Descripción', 'Debe', 'Haber'];
+    const colWidths = [70, 190, 100, 100];
+    const startX = 50;
 
-    doc.fontSize(9).font('Helvetica-Bold');
-    let x = 50;
+    function drawTableBorder(x, y, w, h) {
+      doc.strokeColor('#000000').lineWidth(0.5).rect(x, y, w, h).stroke();
+    }
+
+    // Header
+    const headers = ['Cuenta', 'Descripción', 'Debe', 'Haber'];
+    doc.fontSize(8).font('Helvetica-Bold');
+    let x = startX;
     headers.forEach((h, i) => {
-      doc.text(h, x, tableTop, { width: colWidths[i], align: i >= 2 ? 'right' : 'left' });
+      doc.text(h, x + 2, tableTop + 3, { width: colWidths[i] - 4, align: i >= 2 ? 'right' : 'left' });
       x += colWidths[i];
     });
 
-    doc.strokeColor('#cccccc').lineWidth(0.5)
-      .moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+    drawTableBorder(startX, tableTop, colWidths.reduce((a, b) => a + b, 0), 15);
 
-    let y = tableTop + 20;
-    doc.fontSize(9).font('Helvetica');
+    let y = tableTop + 15;
+    doc.fontSize(8).font('Helvetica');
 
     let totalDebe = 0;
     let totalHaber = 0;
@@ -123,15 +137,16 @@ async function exportarComprobantePDF(req, res) {
       totalDebe += debe;
       totalHaber += haber;
 
-      x = 50;
-      doc.text(d.PlanCuenta?.codigo || '', x, y, { width: colWidths[0] });
+      x = startX;
+      doc.text(d.PlanCuentum?.codigo || '', x + 2, y + 3, { width: colWidths[0] - 4 });
       x += colWidths[0];
-      doc.text(`${d.PlanCuenta?.nombre || ''}${d.glosa ? ` - ${d.glosa}` : ''}`, x, y, { width: colWidths[1] });
+      doc.text(`${d.PlanCuentum?.nombre || ''}${d.glosa ? ` - ${d.glosa}` : ''}`, x + 2, y + 3, { width: colWidths[1] - 4 });
       x += colWidths[1];
-      doc.text(debe > 0 ? formatBs(debe) : '', x, y, { width: colWidths[2], align: 'right' });
+      doc.text(debe > 0 ? formatBs(debe) : '', x + 2, y + 3, { width: colWidths[2] - 4, align: 'right' });
       x += colWidths[2];
-      doc.text(haber > 0 ? formatBs(haber) : '', x, y, { width: colWidths[3], align: 'right' });
+      doc.text(haber > 0 ? formatBs(haber) : '', x + 2, y + 3, { width: colWidths[3] - 4, align: 'right' });
 
+      drawTableBorder(startX, y, colWidths.reduce((a, b) => a + b, 0), 15);
       y += 15;
 
       if (y > doc.page.height - 150) {
@@ -140,18 +155,16 @@ async function exportarComprobantePDF(req, res) {
       }
     });
 
-    y += 5;
-    doc.strokeColor('#000000').lineWidth(1)
-      .moveTo(50, y).lineTo(550, y).stroke();
-    y += 5;
-
+    // Total row
     doc.font('Helvetica-Bold');
-    x = 50;
-    doc.text('TOTALES', x, y, { width: colWidths[0] + colWidths[1] });
+    x = startX;
+    doc.text('TOTALES', x + 2, y + 3, { width: colWidths[0] + colWidths[1] - 4 });
     x += colWidths[0] + colWidths[1];
-    doc.text(formatBs(totalDebe), x, y, { width: colWidths[2], align: 'right' });
+    doc.text(formatBs(totalDebe), x + 2, y + 3, { width: colWidths[2] - 4, align: 'right' });
     x += colWidths[2];
-    doc.text(formatBs(totalHaber), x, y, { width: colWidths[3], align: 'right' });
+    doc.text(formatBs(totalHaber), x + 2, y + 3, { width: colWidths[3] - 4, align: 'right' });
+
+    drawTableBorder(startX, y, colWidths.reduce((a, b) => a + b, 0), 15);
 
     configurarPiePDF(doc, empresa);
     doc.end();
@@ -164,8 +177,8 @@ async function exportarComprobantePDF(req, res) {
 async function exportarTablaPDF(req, res, titulo, obtenerDatos) {
   try {
     const { desde, hasta } = req.query;
-    const datos = await obtenerDatos(desde, hasta);
-    const empresa = await Empresa.findOne();
+    const datos = await obtenerDatos(desde, hasta, req.empresaId);
+    const empresa = await Empresa.findByPk(req.empresaId) || await Empresa.findOne();
     const doc = new PDFDocument({ size: 'LETTER', margin: 50, layout: 'landscape' });
 
     res.setHeader('Content-Type', 'application/pdf');
@@ -249,14 +262,14 @@ async function exportarTablaPDF(req, res, titulo, obtenerDatos) {
 async function exportarExcelGenerico(req, res, titulo, obtenerDatos) {
   try {
     const { desde, hasta } = req.query;
-    const datos = await obtenerDatos(desde, hasta);
-    const empresa = await Empresa.findOne();
+    const datos = await obtenerDatos(desde, hasta, req.empresaId);
+    const empresa = await Empresa.findByPk(req.empresaId) || await Empresa.findOne();
 
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet(titulo);
 
     // Encabezado
-    worksheet.addRow([empresa?.nombre || 'EICAP MINI']);
+    worksheet.addRow([empresa?.nombre || 'MINI']);
     worksheet.addRow([`NIT: ${empresa?.nit || ''}`]);
     worksheet.addRow([titulo]);
     if (desde || hasta) {

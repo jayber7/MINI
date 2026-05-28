@@ -5,7 +5,6 @@ const PlanCuenta = sequelize.define('PlanCuenta', {
   codigo: {
     type: DataTypes.STRING,
     allowNull: false,
-    unique: true,
   },
   nombre: {
     type: DataTypes.STRING,
@@ -48,9 +47,16 @@ const PlanCuenta = sequelize.define('PlanCuenta', {
       key: 'id',
     },
   },
+  clasificacionFlujo: {
+    type: DataTypes.ENUM('operacion', 'inversion', 'financiamiento'),
+    allowNull: true,
+  },
 }, {
   timestamps: true,
   tableName: 'plan_cuentas',
+  indexes: [
+    { unique: true, fields: ['codigo', 'empresaId'] },
+  ],
 });
 
 module.exports = PlanCuenta;

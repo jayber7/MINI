@@ -18,6 +18,9 @@ import Configuracion from './pages/Configuracion';
 import Retenciones from './pages/Retenciones';
 import Compras from './pages/Compras';
 import Ventas from './pages/Ventas';
+import ClientesProveedores from './pages/ClientesProveedores';
+import Inventario from './pages/Inventario';
+import FlujoEfectivo from './pages/FlujoEfectivo';
 import { useContext } from 'react';
 import { Toaster } from 'react-hot-toast';
 
@@ -36,156 +39,24 @@ function AppRoutes() {
     <Routes>
       <Route path="/login" element={usuario ? <Navigate to="/" replace /> : <Login />} />
       
-      <Route
-        path="/"
-        element={
-          <ProtectedRoute>
-            <Layout>
-              <Dashboard />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/plan-cuentas"
-        element={
-          <ProtectedRoute requierePermiso="plan:read">
-            <Layout>
-              <PlanCuentas />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/comprobantes"
-        element={
-          <ProtectedRoute requierePermiso="comprobantes:read">
-            <Layout>
-              <Comprobantes />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/libro-diario"
-        element={
-          <ProtectedRoute requierePermiso="reportes:read">
-            <Layout>
-              <LibroDiario />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/libro-mayor"
-        element={
-          <ProtectedRoute requierePermiso="reportes:read">
-            <Layout>
-              <LibroMayor />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/balance-general"
-        element={
-          <ProtectedRoute requierePermiso="reportes:read">
-            <Layout>
-              <BalanceGeneral />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/estado-resultados"
-        element={
-          <ProtectedRoute requierePermiso="reportes:read">
-            <Layout>
-              <EstadoResultados />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/evolucion-patrimonio"
-        element={
-          <ProtectedRoute requierePermiso="reportes:read">
-            <Layout>
-              <EvolucionPatrimonio />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/sumas-saldos"
-        element={
-          <ProtectedRoute requierePermiso="reportes:read">
-            <Layout>
-              <SumasSaldos />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/configuracion"
-        element={
-          <ProtectedRoute requierePermiso="config:update">
-            <Layout>
-              <Configuracion />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/retenciones"
-        element={
-          <ProtectedRoute requierePermiso="comprobantes:read">
-            <Layout>
-              <Retenciones />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/compras"
-        element={
-          <ProtectedRoute requierePermiso="comprobantes:read">
-            <Layout>
-              <Compras />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/ventas"
-        element={
-          <ProtectedRoute requierePermiso="comprobantes:read">
-            <Layout>
-              <Ventas />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/usuarios"
-        element={
-          <ProtectedRoute requierePermiso="usuarios:read">
-            <Layout>
-              <Usuarios />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/roles"
-        element={
-          <ProtectedRoute requierePermiso="roles:read">
-            <Layout>
-              <Roles />
-            </Layout>
-          </ProtectedRoute>
-        }
-      />
+      <Route path="/" element={<ProtectedRoute><Layout><Dashboard /></Layout></ProtectedRoute>} />
+      <Route path="/plan-cuentas" element={<ProtectedRoute requierePermiso="plan:read"><Layout><PlanCuentas /></Layout></ProtectedRoute>} />
+      <Route path="/comprobantes" element={<ProtectedRoute requierePermiso="comprobantes:read"><Layout><Comprobantes /></Layout></ProtectedRoute>} />
+      <Route path="/libro-diario" element={<ProtectedRoute requierePermiso="reportes:read"><Layout><LibroDiario /></Layout></ProtectedRoute>} />
+      <Route path="/libro-mayor" element={<ProtectedRoute requierePermiso="reportes:read"><Layout><LibroMayor /></Layout></ProtectedRoute>} />
+      <Route path="/balance-general" element={<ProtectedRoute requierePermiso="reportes:read"><Layout><BalanceGeneral /></Layout></ProtectedRoute>} />
+      <Route path="/estado-resultados" element={<ProtectedRoute requierePermiso="reportes:read"><Layout><EstadoResultados /></Layout></ProtectedRoute>} />
+      <Route path="/evolucion-patrimonio" element={<ProtectedRoute requierePermiso="reportes:read"><Layout><EvolucionPatrimonio /></Layout></ProtectedRoute>} />
+      <Route path="/sumas-saldos" element={<ProtectedRoute requierePermiso="reportes:read"><Layout><SumasSaldos /></Layout></ProtectedRoute>} />
+      <Route path="/flujo-efectivo" element={<ProtectedRoute requierePermiso="reportes:read"><Layout><FlujoEfectivo /></Layout></ProtectedRoute>} />
+      <Route path="/configuracion" element={<ProtectedRoute requierePermiso="config:update"><Layout><Configuracion /></Layout></ProtectedRoute>} />
+      <Route path="/retenciones" element={<ProtectedRoute requierePermiso="comprobantes:read"><Layout><Retenciones /></Layout></ProtectedRoute>} />
+      <Route path="/compras" element={<ProtectedRoute requierePermiso="comprobantes:read"><Layout><Compras /></Layout></ProtectedRoute>} />
+      <Route path="/ventas" element={<ProtectedRoute requierePermiso="comprobantes:read"><Layout><Ventas /></Layout></ProtectedRoute>} />
+      <Route path="/clientes-proveedores" element={<ProtectedRoute requierePermiso="comprobantes:read"><Layout><ClientesProveedores /></Layout></ProtectedRoute>} />
+      <Route path="/inventario" element={<ProtectedRoute requierePermiso="comprobantes:read"><Layout><Inventario /></Layout></ProtectedRoute>} />
+      <Route path="/usuarios" element={<ProtectedRoute requierePermiso="usuarios:read"><Layout><Usuarios /></Layout></ProtectedRoute>} />
+      <Route path="/roles" element={<ProtectedRoute requierePermiso="roles:read"><Layout><Roles /></Layout></ProtectedRoute>} />
       
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

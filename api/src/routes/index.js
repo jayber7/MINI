@@ -11,6 +11,10 @@ const exportRoutes = require('./export.routes');
 const retencionRoutes = require('./retencion.routes');
 const compraRoutes = require('./compra.routes');
 const ventaRoutes = require('./venta.routes');
+const clienteProveedorRoutes = require('./clienteProveedor.routes');
+const productoRoutes = require('./producto.routes');
+const flujoEfectivoRoutes = require('./flujoEfectivo.routes');
+const dashboardRoutes = require('./dashboard.routes');
 
 module.exports = {
   authRoutes,
@@ -26,4 +30,8 @@ module.exports = {
   retencionRoutes,
   compraRoutes,
   ventaRoutes,
+  clienteProveedorRoutes,
+  productoRoutes,
+  flujoEfectivoRoutes,
+  dashboardRoutes,
 };

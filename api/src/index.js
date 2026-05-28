@@ -16,8 +16,13 @@ const {
   retencionRoutes,
   compraRoutes,
   ventaRoutes,
+  clienteProveedorRoutes,
+  productoRoutes,
+  flujoEfectivoRoutes,
+  dashboardRoutes,
 } = require('./routes');
 const errorHandler = require('./middleware/errorHandler');
+const empresaMiddleware = require('./middleware/empresa');
 const seed = require('./seeds/seed');
 
 const app = express();
@@ -33,6 +38,9 @@ app.use((req, res, next) => {
   next();
 });
 
+// Global empresa middleware (applies to all /api routes)
+app.use('/api', empresaMiddleware);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/roles', rolesRoutes);
@@ -46,6 +54,10 @@ app.use('/api/export', exportRoutes);
 app.use('/api/retenciones', retencionRoutes);
 app.use('/api/compras', compraRoutes);
 app.use('/api/ventas', ventaRoutes);
+app.use('/api/clientes-proveedores', clienteProveedorRoutes);
+app.use('/api/productos', productoRoutes);
+app.use('/api/reportes/flujo-efectivo', flujoEfectivoRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -64,7 +76,7 @@ async function start() {
 
     const PORT = process.env.PORT || 3001;
     app.listen(PORT, () => {
-      console.log(`Backend EICAP MINI corriendo en http://localhost:${PORT}`);
+      console.log(`Backend MINI corriendo en http://localhost:${PORT}`);
     });
   } catch (error) {
     console.error('Error al iniciar el servidor:', error);

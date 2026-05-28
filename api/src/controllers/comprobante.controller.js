@@ -1,16 +1,24 @@
-const { Comprobante, ComprobanteDetalle, PlanCuenta, Gestion, Proyecto, Empresa, Usuario } = require('../models');
+const { Comprobante, ComprobanteDetalle, PlanCuenta, Gestion, Proyecto, Empresa, Usuario, ClienteProveedor } = require('../models');
 const { Op, Sequelize } = require('sequelize');
 
 async function listar(req, res) {
   try {
-    const { desde, hasta, tipo, estado, page = 1, limit = 20 } = req.query;
+    const { desde, hasta, tipo, estado, documentoTipo, page = 1, limit = 20, search } = req.query;
 
-    const where = {};
+    const where = { empresaId: req.empresaId };
 
     if (desde) where.fecha = { ...where.fecha, [Op.gte]: desde };
     if (hasta) where.fecha = { ...where.fecha, [Op.lte]: hasta };
     if (tipo) where.tipoComprobante = tipo;
     if (estado) where.estado = estado;
+    if (documentoTipo) where.documentoTipo = documentoTipo;
+    if (search) {
+      where[Op.or] = [
+        { glosa: { [Op.like]: `%${search}%` } },
+        { documentoNumero: { [Op.like]: `%${search}%` } },
+        { numero: isNaN(parseInt(search)) ? undefined : parseInt(search) },
+      ].filter(Boolean);
+    }
 
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -20,6 +28,8 @@ async function listar(req, res) {
         { model: Gestion, attributes: ['year'] },
         { model: Proyecto, attributes: ['nombre'] },
         { model: Usuario, as: 'usuarioCrea', attributes: ['nombreCompleto'] },
+        { model: Usuario, as: 'vendedor', attributes: ['nombreCompleto'] },
+        { model: ClienteProveedor, attributes: ['razonSocial', 'nit'] },
       ],
       order: [['fecha', 'DESC'], ['numero', 'DESC']],
       limit: parseInt(limit),
@@ -33,13 +43,15 @@ async function listar(req, res) {
       totalPages: Math.ceil(count / parseInt(limit)),
     });
   } catch (error) {
+    console.error('Error al listar comprobantes:', error);
     res.status(500).json({ error: 'Error al listar comprobantes' });
   }
 }
 
 async function obtener(req, res) {
   try {
-    const comprobante = await Comprobante.findByPk(req.params.id, {
+    const comprobante = await Comprobante.findOne({
+      where: { id: req.params.id, empresaId: req.empresaId },
       include: [
         {
           model: ComprobanteDetalle,
@@ -49,6 +61,8 @@ async function obtener(req, res) {
         { model: Proyecto, attributes: ['nombre'] },
         { model: Usuario, as: 'usuarioCrea', attributes: ['nombreCompleto'] },
         { model: Usuario, as: 'usuarioAnula', attributes: ['nombreCompleto'] },
+        { model: Usuario, as: 'vendedor', attributes: ['nombreCompleto'] },
+        { model: ClienteProveedor, attributes: ['razonSocial', 'nit', 'direccion'] },
       ],
     });
 
@@ -64,7 +78,7 @@ async function obtener(req, res) {
 
 async function crear(req, res) {
   try {
-    const { numero, tipoComprobante, glosa, fecha, proyectoId, gestionId, detalles } = req.body;
+    const { numero, tipoComprobante, documentoTipo, documentoNumero, glosa, fecha, proyectoId, gestionId, clienteProveedorId, vendedorId, pagado, fechaPago, subtotal, descuento, iva, cheque, usd, ufv, detalles } = req.body;
 
     if (!detalles || detalles.length === 0) {
       return res.status(400).json({ error: 'El comprobante debe tener al menos una línea de detalle' });
@@ -91,18 +105,28 @@ async function crear(req, res) {
       });
     }
 
-    const empresa = await Empresa.findOne();
-
     const comprobante = await Comprobante.create({
       numero: numero || (await obtenerSiguienteNumero(gestionId)),
       tipoComprobante,
+      documentoTipo: documentoTipo || null,
+      documentoNumero: documentoNumero || null,
       glosa,
       fecha,
       estado: 'activo',
+      pagado: pagado || false,
+      fechaPago: fechaPago || null,
+      subtotal: subtotal || null,
+      descuento: descuento || 0,
+      iva: iva || null,
       proyectoId: proyectoId || null,
-      gestionId: gestionId || (await Gestion.findOne()).id,
-      empresaId: empresa ? empresa.id : 1,
+      gestionId: gestionId || (await Gestion.findOne({ where: { empresaId: req.empresaId } })).id,
+      empresaId: req.empresaId,
       usuarioIdCrea: req.usuario.id,
+      vendedorId: vendedorId || null,
+      clienteProveedorId: clienteProveedorId || null,
+      cheque: cheque || null,
+      usd: usd || null,
+      ufv: ufv || null,
     });
 
     const detallesCreados = detalles.map((d) => ({
@@ -115,12 +139,14 @@ async function crear(req, res) {
 
     await ComprobanteDetalle.bulkCreate(detallesCreados);
 
-    const comprobanteCompleto = await Comprobante.findByPk(comprobante.id, {
+    const comprobanteCompleto = await Comprobante.findOne({
+      where: { id: comprobante.id },
       include: [
         {
           model: ComprobanteDetalle,
           include: [{ model: PlanCuenta, attributes: ['codigo', 'nombre', 'tipo'] }],
         },
+        { model: ClienteProveedor, attributes: ['razonSocial', 'nit'] },
       ],
     });
 
@@ -133,7 +159,9 @@ async function crear(req, res) {
 
 async function actualizar(req, res) {
   try {
-    const comprobante = await Comprobante.findByPk(req.params.id);
+    const comprobante = await Comprobante.findOne({
+      where: { id: req.params.id, empresaId: req.empresaId },
+    });
 
     if (!comprobante) {
       return res.status(404).json({ error: 'Comprobante no encontrado' });
@@ -145,7 +173,7 @@ async function actualizar(req, res) {
       });
     }
 
-    const { glosa, fecha, tipoComprobante, proyectoId, detalles } = req.body;
+    const { glosa, fecha, tipoComprobante, documentoTipo, documentoNumero, proyectoId, clienteProveedorId, vendedorId, pagado, fechaPago, subtotal, descuento, iva, cheque, usd, ufv, detalles } = req.body;
 
     if (detalles && detalles.length > 0) {
       let totalDebe = 0;
@@ -186,27 +214,44 @@ async function actualizar(req, res) {
       glosa: glosa || comprobante.glosa,
       fecha: fecha || comprobante.fecha,
       tipoComprobante: tipoComprobante || comprobante.tipoComprobante,
+      documentoTipo: documentoTipo !== undefined ? documentoTipo : comprobante.documentoTipo,
+      documentoNumero: documentoNumero !== undefined ? documentoNumero : comprobante.documentoNumero,
       proyectoId: proyectoId !== undefined ? proyectoId : comprobante.proyectoId,
+      clienteProveedorId: clienteProveedorId !== undefined ? clienteProveedorId : comprobante.clienteProveedorId,
+      vendedorId: vendedorId !== undefined ? vendedorId : comprobante.vendedorId,
+      pagado: pagado !== undefined ? pagado : comprobante.pagado,
+      fechaPago: fechaPago !== undefined ? fechaPago : comprobante.fechaPago,
+      subtotal: subtotal !== undefined ? subtotal : comprobante.subtotal,
+      descuento: descuento !== undefined ? descuento : comprobante.descuento,
+      iva: iva !== undefined ? iva : comprobante.iva,
+      cheque: cheque !== undefined ? cheque : comprobante.cheque,
+      usd: usd !== undefined ? usd : comprobante.usd,
+      ufv: ufv !== undefined ? ufv : comprobante.ufv,
     });
 
-    const comprobanteCompleto = await Comprobante.findByPk(comprobante.id, {
+    const comprobanteCompleto = await Comprobante.findOne({
+      where: { id: comprobante.id },
       include: [
         {
           model: ComprobanteDetalle,
           include: [{ model: PlanCuenta, attributes: ['codigo', 'nombre', 'tipo'] }],
         },
+        { model: ClienteProveedor, attributes: ['razonSocial', 'nit'] },
       ],
     });
 
     res.json(comprobanteCompleto);
   } catch (error) {
+    console.error('Error al actualizar comprobante:', error);
     res.status(500).json({ error: 'Error al actualizar comprobante' });
   }
 }
 
 async function anular(req, res) {
   try {
-    const comprobante = await Comprobante.findByPk(req.params.id);
+    const comprobante = await Comprobante.findOne({
+      where: { id: req.params.id, empresaId: req.empresaId },
+    });
 
     if (!comprobante) {
       return res.status(404).json({ error: 'Comprobante no encontrado' });
@@ -230,7 +275,9 @@ async function anular(req, res) {
 
 async function contabilizar(req, res) {
   try {
-    const comprobante = await Comprobante.findByPk(req.params.id);
+    const comprobante = await Comprobante.findOne({
+      where: { id: req.params.id, empresaId: req.empresaId },
+    });
 
     if (!comprobante) {
       return res.status(404).json({ error: 'Comprobante no encontrado' });
@@ -254,7 +301,9 @@ async function contabilizar(req, res) {
 
 async function eliminar(req, res) {
   try {
-    const comprobante = await Comprobante.findByPk(req.params.id);
+    const comprobante = await Comprobante.findOne({
+      where: { id: req.params.id, empresaId: req.empresaId },
+    });
 
     if (!comprobante) {
       return res.status(404).json({ error: 'Comprobante no encontrado' });
@@ -307,6 +356,64 @@ async function obtenerTotales(req, res) {
   }
 }
 
+async function marcarPagado(req, res) {
+  try {
+    const comprobante = await Comprobante.findOne({
+      where: { id: req.params.id, empresaId: req.empresaId },
+    });
+
+    if (!comprobante) {
+      return res.status(404).json({ error: 'Comprobante no encontrado' });
+    }
+
+    const { pagado, fechaPago } = req.body;
+    await comprobante.update({
+      pagado: pagado !== undefined ? pagado : true,
+      fechaPago: fechaPago || (pagado ? new Date() : null),
+    });
+
+    res.json({ mensaje: pagado ? 'Marcado como pagado' : 'Marcado como pendiente' });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al actualizar estado de pago' });
+  }
+}
+
+async function kpis(req, res) {
+  try {
+    const { desde, hasta } = req.query;
+    const where = { empresaId: req.empresaId };
+
+    if (desde) where.fecha = { ...where.fecha, [Op.gte]: desde };
+    if (hasta) where.fecha = { ...where.fecha, [Op.lte]: hasta };
+
+    const total = await Comprobante.count({ where });
+
+    const pagados = await Comprobante.count({ where: { ...where, pagado: true } });
+    const pendientes = await Comprobante.count({ where: { ...where, pagado: false, estado: { [Op.ne]: 'anulado' } } });
+
+    const totalMonto = await ComprobanteDetalle.findAll({
+      include: [{
+        model: Comprobante,
+        where,
+        attributes: [],
+      }],
+      attributes: [
+        [Sequelize.fn('SUM', Sequelize.col('debe')), 'total'],
+      ],
+      raw: true,
+    });
+
+    res.json({
+      total,
+      pagados,
+      pendientes,
+      totalMonto: parseFloat(totalMonto[0]?.total) || 0,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener KPIs' });
+  }
+}
+
 module.exports = {
   listar,
   obtener,
@@ -316,4 +423,6 @@ module.exports = {
   contabilizar,
   eliminar,
   obtenerTotales,
+  marcarPagado,
+  kpis,
 };
